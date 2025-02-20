@@ -50,7 +50,11 @@ fn run_prompt() {
 
 fn run(src: String) {
     let mut lexer = Lexer::new(src);
-    while let Some(token) = lexer.next_token() {
-        println!("{token:?}"); 
+    loop {
+        match lexer.next_token() {
+            Some(lexer::Token::Eof) => break,
+            Some(token) => println!("{token:?}"),
+            None => (),
+        }
     }
 }
