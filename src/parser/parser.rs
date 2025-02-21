@@ -1,5 +1,7 @@
 #![allow(unused)]
 
+use std::sync::Arc;
+
 use crate::{common::*, error::{self, Error, ErrorType}};
 use super::ast::*;
 use super::ast::Expr::*;
@@ -14,9 +16,9 @@ impl Parser {
     pub fn new(lexer: Lexer) -> Self {
         let mut parser = Parser {
             lexer,
-            current_token: Token::new(TokenType::Eof, None, 0),
+            current_token: Token::new(TokenType::And, None, 0),
         };
-        parser.eat_current();
+        parser.current_token = parser.lexer.next_token().unwrap();
         parser
     }
 
@@ -39,6 +41,7 @@ impl Parser {
                 TokenType::EqualEqual => BinaryOp::Eq,
                 _ => unreachable!(),
             };
+            self.eat_current();
             equa = BinaryExpr {
                 left: Box::new(equa),
                 op,
@@ -64,6 +67,7 @@ impl Parser {
                 TokenType::LessEqual => BinaryOp::LsEq,
                 _ => unreachable!(),
             };
+            self.eat_current();
             comp = BinaryExpr {
                 left: Box::new(comp),
                 op,
@@ -79,6 +83,7 @@ impl Parser {
         self.align();
         let mut term = self.factor();
 
+        println!("in term {:?}", &self.current_token);
         while matches!(self.current_token.kind,
         TokenType::Plus|TokenType::Minus) {
             let op = match self.current_token.kind {
@@ -86,6 +91,7 @@ impl Parser {
                 TokenType::Minus => BinaryOp::Sub,
                 _ => unreachable!(),
             };
+            self.eat_current();
             term = BinaryExpr {
                 left: Box::new(term),
                 op,
@@ -108,6 +114,7 @@ impl Parser {
                 TokenType::Slash => BinaryOp::Div,
                 _ => unreachable!(),
             };
+            self.eat_current();
             factor = BinaryExpr {
                 left: Box::new(factor),
                 op,
@@ -121,9 +128,9 @@ impl Parser {
 
     fn unary(&mut self) -> Expr {
         self.align();
-        let mut unary = self.primary();
-
-        while matches!(self.current_token.kind,
+ 
+        println!("in unary {:?}", &self.current_token);
+        if matches!(self.current_token.kind,
         TokenType::Plus|TokenType::Minus|TokenType::Bang) {
             let op = match self.current_token.kind {
                 TokenType::Plus => UnaryOp::Pos,
@@ -131,14 +138,14 @@ impl Parser {
                 TokenType::Bang => UnaryOp::Not,
                 _ => unreachable!(),
             };
-            unary = UnaryExpr {
+            self.eat_current();
+            return UnaryExpr {
                 op,
-                expr: Box::new(unary),
+                expr: Box::new(self.unary()),
             };
-            self.align();
         }
 
-        unary
+        self.primary()
     }
 
     fn primary(&mut self) -> Expr {
@@ -172,19 +179,25 @@ impl Parser {
 
     fn eat_current(&mut self) -> Token {
         self.align();
-        std::mem::replace(&mut self.current_token, {
-            self.lexer.next_token();
-            while self.lexer.peek_token().is_none() {
-                self.lexer.next_token();
+        let token = std::mem::replace(&mut self.current_token, Token::new(TokenType::And, None, 0));
+        self.current_token = {
+            match self.lexer.next_token() {
+                Some(token) => token,
+                None => {
+                    self.align();
+                    self.lexer.next_token().unwrap()
+                },
             }
-            self.lexer.next_token().unwrap()
-        })
+        };
+        token
     }
 
     fn align(&mut self) {
+        //println!("before align {:?}", &self.current_token);
         while self.lexer.peek_token().is_none() {
             self.lexer.next_token();
         }
+        //println!("after align {:?}", &self.current_token);
     }
 
     fn at_end(&self) -> bool {

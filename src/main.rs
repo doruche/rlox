@@ -52,7 +52,7 @@ fn run_prompt() {
 }
 
 fn run(src: String) {
-    let mut lexer = Lexer::new(src);
+    let mut lexer = Lexer::new(src.clone());
     loop {
         match lexer.next_token() {
             Some(token) if token.kind == TokenType::Eof => break,
@@ -60,6 +60,7 @@ fn run(src: String) {
             None => (),
         }
     }
+    let lexer = Lexer::new(src);
     let mut parser = Parser::new(lexer);
     println!("{:?}", parser.parse());
 }
