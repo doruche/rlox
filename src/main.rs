@@ -1,9 +1,12 @@
 #![allow(unused)]
 mod lexer;
 mod error;
+mod parser;
+mod common;
 
 use std::{env, fs, io::{self, BufRead, Write}, process};
-use lexer::Lexer;
+use lexer::{Lexer, TokenType};
+use parser::{Parser, Expr};
 
 fn main() {
     let mut args = env::args();
@@ -52,9 +55,11 @@ fn run(src: String) {
     let mut lexer = Lexer::new(src);
     loop {
         match lexer.next_token() {
-            Some(lexer::Token::Eof) => break,
+            Some(token) if token.kind == TokenType::Eof => break,
             Some(token) => println!("{token:?}"),
             None => (),
         }
     }
+    let mut parser = Parser::new(lexer);
+    println!("{:?}", parser.parse());
 }

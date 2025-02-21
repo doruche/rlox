@@ -1,5 +1,24 @@
-#[derive(Debug, PartialEq, Clone)]
-pub enum Token {
+use crate::common::Value;
+
+#[derive(Debug)]
+pub struct Token {
+    pub kind: TokenType,
+    pub lexeme: Option<Value>,
+    pub line: usize,
+}
+
+impl Token {
+    pub fn new(kind: TokenType, lexeme: Option<Value>, line: usize) -> Self {
+        Token {
+            kind,
+            lexeme,
+            line,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum TokenType {
     // single-character
     LParen, Rparen,
     LBrace, RBrace,
@@ -13,9 +32,9 @@ pub enum Token {
     Less, LessEqual,
 
     // literals
-    Identifier(String),
-    String(String),
-    Number(f64),
+    Identifier,
+    String,
+    Number,
 
     // keywords
     And, Class, Else, False, Fun, For, If, Nil, Or,

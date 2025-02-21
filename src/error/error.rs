@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 #[derive(Debug)]
 pub enum ErrorType {
     LexerError,

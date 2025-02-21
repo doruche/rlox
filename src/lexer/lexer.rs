@@ -1,12 +1,14 @@
 use core::num;
 
-use super::Token;
-use crate::error::{self, Error, ErrorType};
+use super::{Token, TokenType};
+use crate::{common::Value, error::{self, Error, ErrorType}};
 
 pub struct Lexer {
     src: Vec<char>,
     line: usize,
     cur_pos: usize,
+
+    cache: Option<Token>
 }
 
 impl Lexer {
@@ -15,13 +17,25 @@ impl Lexer {
             src: src.chars().collect(),
             line: 1,
             cur_pos: 0,
+            cache: None,
         }
     }
 
+    pub fn peek_token(&mut self) -> Option<&Token> {
+        if self.cache.is_none() {
+            self.cache = self.next_token();
+        }
+        self.cache.as_ref()
+    }
+
     pub fn next_token(&mut self) -> Option<Token> {
-        use Token::*;
-        if let Some(ch) = self.advance() {
-            Some(match ch {
+        if self.cache.is_some() {
+            return self.cache.take();
+        }
+
+        use TokenType::*;
+        let info = if let Some(ch) = self.advance() {
+            match ch {
                 '(' => LParen,
                 ')' => Rparen,
                 '{' => LBrace,
@@ -54,12 +68,13 @@ impl Lexer {
                 } else {
                     Slash
                 },
-                '"' => String(match self.string() {
-                    Ok(string) => string,
-                    Err(e) => error::report_and_suspend(e),
-                }),
-                '0'..='9' => Number(self.number()),
-                _ if ch.is_ascii_alphabetic() || ch == '_' => self.identifier(),
+                '"' => return Some(Token::new(String, 
+                    Some(Value::String(match self.string() {
+                        Ok(string) => string,
+                        Err(e) => error::report_and_suspend(e),
+                    })), self.line)),
+                '0'..='9' => return Some(Token::new(Number, Some(Value::Number(self.number())), self.line)),
+                _ if ch.is_ascii_alphabetic() || ch == '_' => return Some(self.identifier()),
                 _ => {
                     error::report(Error::new(
                         ErrorType::LexerError,
@@ -68,10 +83,12 @@ impl Lexer {
                     ));
                     return None;
                 },
-            })
+            }
         } else {
-            Some(Eof)
-        }
+            TokenType::Eof
+        };
+
+        Some(Token::new(info, None, self.line))
     }
     
     fn at_end(&self) -> bool {
@@ -181,24 +198,25 @@ impl Lexer {
         }
 
         let id: String = self.src[start_pot..self.cur_pos].iter().collect();
-        match &id[..] {
-            "and" => Token::And,
-            "class" => Token::Class,
-            "else" => Token::Else,
-            "false" => Token::False,
-            "for" => Token::For,
-            "fun" => Token::Fun,
-            "if" => Token::If,
-            "nil" => Token::Nil,
-            "or" => Token::Or,
-            "print" => Token::Print,
-            "return" => Token::Return,
-            "super" => Token::Super,
-            "this" => Token::This,
-            "true" => Token::True,
-            "var" => Token::Var,
-            "while" => Token::While,
-            _ => Token::Identifier(id),
-        }
+        let kind =match &id[..] {
+            "and" => TokenType::And,
+            "class" => TokenType::Class,
+            "else" => TokenType::Else,
+            "false" => TokenType::False,
+            "for" => TokenType::For,
+            "fun" => TokenType::Fun,
+            "if" => TokenType::If,
+            "nil" => TokenType::Nil,
+            "or" => TokenType::Or,
+            "print" => TokenType::Print,
+            "return" => TokenType::Return,
+            "super" => TokenType::Super,
+            "this" => TokenType::This,
+            "true" => TokenType::True,
+            "var" => TokenType::Var,
+            "while" => TokenType::While,
+            _ => return Token::new(TokenType::Identifier, Some(Value::String(id)), self.line),
+        };
+        Token::new(kind, None, self.line)
     }
 }
