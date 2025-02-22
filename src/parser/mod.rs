@@ -2,4 +2,4 @@ mod parser;
 mod ast;
 
 pub use parser::Parser;
-pub use ast::Expr;
+pub use ast::{Expr, BinaryOp, UnaryOp};

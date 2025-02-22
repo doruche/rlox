@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use std::sync::Arc;
+use std::{iter::Peekable, sync::Arc};
 
 use crate::{common::*, error::{self, Error, ErrorType}};
 use super::ast::*;
@@ -8,199 +8,234 @@ use super::ast::Expr::*;
 use crate::lexer::{Lexer, TokenType, Token};
 
 pub struct Parser {
-    lexer: Lexer,
-    current_token: Token,
+    tokens: Vec<Token>,
+    current_pos: usize,
 }
 
 impl Parser {
-    pub fn new(lexer: Lexer) -> Self {
-        let mut parser = Parser {
-            lexer,
-            current_token: Token::new(TokenType::And, None, 0),
-        };
-        parser.current_token = parser.lexer.next_token().unwrap();
-        parser
+    pub fn new(tokens: Vec<Token>) -> Self {
+        Parser {
+            tokens,
+            current_pos: 0,
+        }
     }
 
-    pub fn parse(mut self) -> Expr {
-        self.expr()
+    pub fn parse(mut self) -> Result<Expr, ()> {
+        self.conjuction()
     }
 
-    fn expr(&mut self) -> Expr {
-        self.equality()
+    fn conjuction(&mut self) -> Result<Expr, ()> {
+        let mut exprs = vec![self.expr()?];
+        
+        while matches!(self.peek().kind,
+        TokenType::Comma) {
+            self.eat_current();
+            exprs.push(self.expr()?);        
+        }
+
+        Ok(ConjunctionExpr { exprs })
     }
 
-    fn equality(&mut self) -> Expr {
-        self.align();
-        let mut equa = self.comparison();
+    fn expr(&mut self) -> Result<Expr, ()> {
+        self.ternary()
+    }
 
-        while matches!(self.current_token.kind, 
+
+    fn ternary(&mut self) -> Result<Expr, ()> {
+        let equa = self.equality()?;
+        if self.peek().kind == TokenType::Question {
+            let q = self.eat_current();
+            let true_branch = Box::new(self.expr()?);
+            self.eat(&TokenType::Colon, "Expected a ':'.".to_string());
+            let false_branch = Box::new(self.expr()?);
+            return Ok(TernaryExpr {
+                condition: Box::new(equa),
+                true_branch,
+                false_branch,
+                line: q.line,
+            })
+        } else {
+            Ok(equa)
+        }
+    }
+
+    fn equality(&mut self) -> Result<Expr, ()> {
+        let mut equa = self.comparison()?;
+
+        while matches!(self.peek().kind,
         TokenType::BangEqual | TokenType::EqualEqual) {
-            let op = match self.current_token.kind {
+            let token = self.eat_current();
+            let op = match token.kind {
                 TokenType::BangEqual => BinaryOp::NotEq,
                 TokenType::EqualEqual => BinaryOp::Eq,
                 _ => unreachable!(),
             };
-            self.eat_current();
             equa = BinaryExpr {
                 left: Box::new(equa),
                 op,
-                right: Box::new(self.comparison()),
+                right: Box::new(self.comparison()?),
+                line: token.line,
             };
-            self.align();
         }
 
-        equa
+        Ok(equa)
     }
 
-    fn comparison(&mut self) -> Expr {
-        self.align();
-        let mut comp = self.term();
+    fn comparison(&mut self) -> Result<Expr, ()> {
+        let mut comp = self.term()?;
 
-        while matches!(self.current_token.kind,
+        while matches!(self.peek().kind,
         TokenType::Greater|TokenType::GreaterEqual|
         TokenType::Less|TokenType::LessEqual) {
-            let op = match self.current_token.kind {
+            let token = self.eat_current();
+            let op = match token.kind {
                 TokenType::Greater => BinaryOp::Gt,
                 TokenType::GreaterEqual => BinaryOp::GtEq,
                 TokenType::Less => BinaryOp::Ls,
                 TokenType::LessEqual => BinaryOp::LsEq,
                 _ => unreachable!(),
             };
-            self.eat_current();
             comp = BinaryExpr {
                 left: Box::new(comp),
                 op,
-                right: Box::new(self.term()),
+                right: Box::new(self.term()?),
+                line: token.line,
             };
-            self.align();
         }
 
-        comp
+        Ok(comp)
     }
 
-    fn term(&mut self) -> Expr {
-        self.align();
-        let mut term = self.factor();
+    fn term(&mut self) -> Result<Expr, ()> {
+        let mut term = self.factor()?;
 
-        println!("in term {:?}", &self.current_token);
-        while matches!(self.current_token.kind,
+        while matches!(self.peek().kind,
         TokenType::Plus|TokenType::Minus) {
-            let op = match self.current_token.kind {
+            let token = self.eat_current();
+            let op = match token.kind {
                 TokenType::Plus => BinaryOp::Add,
                 TokenType::Minus => BinaryOp::Sub,
                 _ => unreachable!(),
             };
-            self.eat_current();
             term = BinaryExpr {
                 left: Box::new(term),
                 op,
-                right: Box::new(self.factor()),
+                right: Box::new(self.factor()?),
+                line: token.line,
             };
-            self.align();
         }
 
-        term
+        Ok(term)
     }
 
-    fn factor(&mut self) -> Expr {
-        self.align();
-        let mut factor = self.unary();
+    fn factor(&mut self) -> Result<Expr, ()> {
+        let mut factor = self.unary()?;
 
-        while matches!(self.current_token.kind,
+        while matches!(self.peek().kind,
         TokenType::Star|TokenType::Slash) {
-            let op = match self.current_token.kind {
+            let token = self.eat_current();
+            let op = match token.kind {
                 TokenType::Star => BinaryOp::Mul,
                 TokenType::Slash => BinaryOp::Div,
                 _ => unreachable!(),
             };
-            self.eat_current();
             factor = BinaryExpr {
                 left: Box::new(factor),
                 op,
-                right: Box::new(self.unary()),
+                right: Box::new(self.unary()?),
+                line: token.line,
             };
-            self.align(); 
         }
 
-        factor
+        Ok(factor)
     }
 
-    fn unary(&mut self) -> Expr {
-        self.align();
- 
-        println!("in unary {:?}", &self.current_token);
-        if matches!(self.current_token.kind,
+    fn unary(&mut self) -> Result<Expr, ()> {
+        if matches!(self.peek().kind,
         TokenType::Plus|TokenType::Minus|TokenType::Bang) {
-            let op = match self.current_token.kind {
+            let token = self.eat_current();
+            let op = match token.kind {
                 TokenType::Plus => UnaryOp::Pos,
                 TokenType::Minus => UnaryOp::Neg,
                 TokenType::Bang => UnaryOp::Not,
                 _ => unreachable!(),
             };
-            self.eat_current();
-            return UnaryExpr {
+            return Ok(UnaryExpr {
                 op,
-                expr: Box::new(self.unary()),
-            };
+                expr: Box::new(self.unary()?),
+                line: token.line,
+            });
         }
 
         self.primary()
     }
 
-    fn primary(&mut self) -> Expr {
-        self.align();
-
+    fn primary(&mut self) -> Result<Expr, ()> { 
         let token = self.eat_current();
         match token.kind {
-            TokenType::False => Literal(Value::Boolean(false)),
-            TokenType::True => Literal(Value::Boolean(true)),
-            TokenType::Number => Literal(token.lexeme.unwrap()),
-            TokenType::String => Literal(token.lexeme.unwrap()),
+            TokenType::Nil => Ok(Literal(Value::Nil)),
+            TokenType::False => Ok(Literal(Value::Boolean(false))),
+            TokenType::True => Ok(Literal(Value::Boolean(true))),
+            TokenType::Number => Ok(Literal(token.lexeme.unwrap())),
+            TokenType::String => Ok(Literal(token.lexeme.unwrap())),
             TokenType::LParen => {
                 let e = self.expr();
-                self.eat(&TokenType::Rparen);
+                self.eat(&TokenType::Rparen, "Expect ')' after expression.".to_string())?;
                 e
             }
-            _ => error::report_and_suspend(Error::new(ErrorType::ParserError, 
-                format!("Unexpected token {token:?}"), token.line)),
+            _ => {
+                error::report(Error::new(ErrorType::ParserError, 
+                format!("Expected an expression."), token.line));
+                Err(())
+            }
         }
     }
 
-    fn eat(&mut self, kind: &TokenType) {
-        if &self.current_token.kind == kind {
-            self.align();
-            self.current_token = self.lexer.next_token().unwrap();
+    fn eat(&mut self, kind: &TokenType, msg: String) -> Result<Token, ()> {
+        if self.peek().kind == *kind {
+            Ok(self.eat_current())
         } else {
-            error::report_and_suspend(Error::new(ErrorType::ParserError, 
-                format!("Expected {:?}, found {:?}", kind, &self.current_token), self.current_token.line));
+            error::report(Error::new(ErrorType::ParserError, 
+                msg, self.peek().line));
+            Err(())
         }
     }
 
     fn eat_current(&mut self) -> Token {
-        self.align();
-        let token = std::mem::replace(&mut self.current_token, Token::new(TokenType::And, None, 0));
-        self.current_token = {
-            match self.lexer.next_token() {
-                Some(token) => token,
-                None => {
-                    self.align();
-                    self.lexer.next_token().unwrap()
-                },
-            }
-        };
-        token
+        if !self.at_end() {
+            self.current_pos += 1;
+        }
+        self.previous()
     }
 
-    fn align(&mut self) {
-        //println!("before align {:?}", &self.current_token);
-        while self.lexer.peek_token().is_none() {
-            self.lexer.next_token();
-        }
-        //println!("after align {:?}", &self.current_token);
+    fn previous(&mut self) -> Token {
+        let cur = self.tokens.get_mut(self.current_pos - 1).unwrap();
+        std::mem::replace(cur, Token::def(cur.line))
+    }
+
+    fn peek(&self) -> &Token {
+        self.tokens.get(self.current_pos).unwrap()
     }
 
     fn at_end(&self) -> bool {
-        self.current_token.kind == TokenType::Eof
+        self.peek().kind == TokenType::Eof
+    }
+
+    fn synchronize(&mut self) {
+        use TokenType::*;
+        let mut token = self.eat_current();
+
+        while !self.at_end() {
+            if token.kind == SemiColon {
+                return;
+            }
+
+            if matches!(self.peek().kind,
+            Class|Fun|Var|For|If|While|Print|Return) {
+                return;
+            }
+
+            token = self.eat_current();
+        }
     }
 }

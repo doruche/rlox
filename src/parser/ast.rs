@@ -8,22 +8,33 @@ pub enum Expr {
     UnaryExpr {
         op: UnaryOp,
         expr: Box<Expr>,
+        line: usize,
     },
     BinaryExpr {
         left: Box<Expr>,
         op: BinaryOp,
         right: Box<Expr>,
+        line: usize,
+    },
+    TernaryExpr {
+        condition: Box<Expr>,
+        true_branch: Box<Expr>,
+        false_branch: Box<Expr>,
+        line: usize,
+    },
+    ConjunctionExpr {
+        exprs: Vec<Expr>,
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum UnaryOp {
     Pos,
     Neg,
     Not,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinaryOp {
     Add,
     Sub,

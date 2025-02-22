@@ -17,8 +17,8 @@ use ErrorType::*;
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
-            LexerError => write!(f, "Lexer Error at line {}: {}", self.line, self.message),
-            ParserError => write!(f, "Parser Error at line {}: {}", self.line, self.message),
+            LexerError => write!(f, "Lexical Error at line {}: {}", self.line, self.message),
+            ParserError => write!(f, "Parsing Error at line {}: {}", self.line, self.message),
             RuntimeError => write!(f, "Runtime Error at line {}: {}", self.line, self.message),
         }
     }
@@ -33,6 +33,11 @@ impl Error {
             message,
             line,
         }
+    }
+
+    pub fn number_operator_error(line: usize) -> Self {
+        Error::new(RuntimeError, 
+            "Operand must be a number".to_string(), line)
     }
 }
 

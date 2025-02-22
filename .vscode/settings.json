@@ -1,6 +1,0 @@
-{
-    "rust-analyzer.cargo.buildScripts.rebuildOnSave": false,
-    "rust-analyzer.linkedProjects": [
-        "Cargo.toml"
-    ],
-}

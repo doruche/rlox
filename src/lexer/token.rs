@@ -15,6 +15,20 @@ impl Token {
             line,
         }
     }
+
+    pub fn def(line: usize) -> Self {
+        Self {
+            kind: TokenType::Def,
+            lexeme: None,
+            line,
+        }
+    }
+}
+
+impl Default for Token {
+    fn default() -> Self {
+        Self { kind: TokenType::Def, lexeme: Default::default(), line: Default::default() }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -24,6 +38,7 @@ pub enum TokenType {
     LBrace, RBrace,
     Comma, Dot, Minus, Plus,
     SemiColon, Slash, Star, Colon,
+    Question,
 
     // one or two character
     Bang, BangEqual,
@@ -41,4 +56,7 @@ pub enum TokenType {
     Print, Return, Super, This, True, Var, While,
 
     Eof,
+
+    // unused
+    Def,
 }

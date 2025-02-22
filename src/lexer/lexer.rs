@@ -8,7 +8,7 @@ pub struct Lexer {
     line: usize,
     cur_pos: usize,
 
-    cache: Option<Token>
+    has_error: bool,
 }
 
 impl Lexer {
@@ -17,21 +17,30 @@ impl Lexer {
             src: src.chars().collect(),
             line: 1,
             cur_pos: 0,
-            cache: None,
+            has_error: false,
         }
     }
 
-    pub fn peek_token(&mut self) -> Option<&Token> {
-        if self.cache.is_none() {
-            self.cache = self.next_token();
+    pub fn lex(mut self) -> Option<Vec<Token>> {
+        let mut res = vec![];
+        loop {
+            match self.next_token() {
+                None => (),
+                Some(token) if token.kind == TokenType::Eof => {
+                    res.push(token);
+                    break;
+                }
+                Some(token) => res.push(token),
+            };
         }
-        self.cache.as_ref()
+        if self.has_error {
+            None
+        } else {
+            Some(res)
+        }
     }
 
     pub fn next_token(&mut self) -> Option<Token> {
-        if self.cache.is_some() {
-            return self.cache.take();
-        }
 
         use TokenType::*;
         let info = if let Some(ch) = self.advance() {
@@ -47,6 +56,7 @@ impl Lexer {
                 ',' => Comma,
                 '.' => Dot,
                 '*' => Star,
+                '?' => Question,
                 ' '|'\r'|'\t' => return self.next_token(),
                 '\n' => {
                     self.line += 1;
@@ -71,7 +81,11 @@ impl Lexer {
                 '"' => return Some(Token::new(String, 
                     Some(Value::String(match self.string() {
                         Ok(string) => string,
-                        Err(e) => error::report_and_suspend(e),
+                        Err(e) => {
+                            self.has_error = true;
+                            error::report(e);
+                            return None;
+                        }
                     })), self.line)),
                 '0'..='9' => return Some(Token::new(Number, Some(Value::Number(self.number())), self.line)),
                 _ if ch.is_ascii_alphabetic() || ch == '_' => return Some(self.identifier()),
@@ -81,6 +95,7 @@ impl Lexer {
                         format!("Unexpected charatcer {}", ch),
                         self.line
                     ));
+                    self.has_error = true;
                     return None;
                 },
             }
