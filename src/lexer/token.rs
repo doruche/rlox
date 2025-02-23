@@ -53,7 +53,7 @@ pub enum TokenType {
 
     // keywords
     And, Class, Else, False, Fun, For, If, Nil, Or,
-    Print, Return, Super, This, True, Var, While,
+    Print, Return, Super, This, True, Var, While, Break,
 
     Eof,
 

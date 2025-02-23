@@ -49,7 +49,7 @@ fn run_prompt(i: &mut Interpreter) {
             Ok(0) => process::exit(0),
             Ok(_) => if matches!(&line[..], "quit\r\n"|"exit\r\n") {
                 process::exit(0);
-            } else  {
+            } else  {                
                 run(line.trim_end().to_string(), i);
             },
             Err(e) => {
@@ -60,6 +60,10 @@ fn run_prompt(i: &mut Interpreter) {
     }   
 }
 
+fn eval(src: String, interpreter: &mut Interpreter) -> Result<(), ()> {
+    Ok(())
+}
+
 fn run(src: String, interpreter: &mut Interpreter) {
     let lexer = Lexer::new(src);
     let tokens = lexer.lex();
@@ -67,14 +71,14 @@ fn run(src: String, interpreter: &mut Interpreter) {
         return;
     }
     let parser = Parser::new(tokens.unwrap());
-    let ast = parser.parse();
+    let ast = parser.parse_prog();
     if ast.is_err() {
         return;
     }
 
-    let res = interpreter.eval(&ast.ok().unwrap());
+    let res = interpreter.exec(&ast.ok().unwrap());
     match res {
-        Ok(v) => println!("{v}"),
+        Ok(v) => (),
         Err(e) => error::report(e),
     }
 }

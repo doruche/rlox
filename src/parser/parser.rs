@@ -1,15 +1,18 @@
 #![allow(unused)]
 
-use std::{iter::Peekable, sync::Arc};
+use std::{iter::Peekable, ptr::eq, sync::Arc};
 
 use crate::{common::*, error::{self, Error, ErrorType}};
-use super::ast::*;
-use super::ast::Expr::*;
+use super::Expr::*;
+use super::Stmt::*;
+use super::*;
 use crate::lexer::{Lexer, TokenType, Token};
 
 pub struct Parser {
     tokens: Vec<Token>,
     current_pos: usize,
+
+    has_error: bool,
 }
 
 impl Parser {
@@ -17,11 +20,200 @@ impl Parser {
         Parser {
             tokens,
             current_pos: 0,
+
+            has_error: false,
         }
     }
 
-    pub fn parse(mut self) -> Result<Expr, ()> {
-        self.conjuction()
+    pub fn parse_prog(mut self) -> Result<Vec<Stmt>, ()> {
+        let mut prog = vec![];
+        while !self.at_end() {
+            let stmt = self.declaration();
+            if let Ok(stmt) = stmt {
+                prog.push(stmt);
+            }
+        }
+        if self.has_error {
+            return Err(());
+        }
+        Ok(prog)
+    }
+
+    pub fn parse_expr(mut self) -> Result<Expr, ()> {
+        self.expr()
+    }
+
+    fn declaration(&mut self) -> Result<Stmt, ()> {
+        let stmt = if self.peek().kind == TokenType::Var {
+            self.var_stmt()
+        } else {
+            self.statement()
+        };
+        if stmt.is_ok() {
+            stmt
+        } else {
+            self.has_error = true;
+            self.synchronize();
+            Err(())
+        }
+    }
+
+    fn statement(&mut self) -> Result<Stmt, ()> {
+        match self.peek().kind {
+            TokenType::If => self.if_stmt(),
+            TokenType::While => self.while_stmt(),
+            TokenType::For => self.for_stmt(),
+            TokenType::Print => self.print_stmt(),
+            TokenType::LBrace => Ok(Stmt::Block(self.block()?)),
+            TokenType::SemiColon => Ok(self.empty()),
+            _ => self.expr_stmt(),
+        }
+    }
+
+    fn empty(&mut self) -> Stmt {
+        self.eat_current();
+        Empty
+    }
+
+    fn for_stmt(&mut self) -> Result<Stmt, ()> {
+        self.eat_current();
+
+        self.eat(&TokenType::LParen, "Expect '(' after 'for'.".to_string())?;
+        let initializer = match self.peek().kind {
+            TokenType::SemiColon => self.empty(),
+            TokenType::Var => self.var_stmt()?,
+            _ => self.expr_stmt()?,
+        };
+
+        let condition = Box::new(match self.peek().kind {
+            TokenType::SemiColon => Literal(Value::Boolean(true)),
+            _ => self.expr()?,
+        });
+        self.eat(&TokenType::SemiColon, "Expect ';' after the loop condition.".to_string())?;
+
+        let increment = match self.peek().kind {
+            TokenType::Rparen => None,
+            _ => Some(self.expr()?),
+        };
+        self.eat(&TokenType::Rparen, "Expect ')' after clauses.".to_string())?;
+        
+        self.eat(&TokenType::LBrace, "Need a '{' to begin a for block.".to_string())?;
+        let mut body = vec![];
+        while !self.at_end()
+        && self.peek().kind != TokenType::RBrace {
+            body.push(self.declaration()?);
+        }
+        self.eat(&TokenType::RBrace, "Expect '}' after blocks.".to_string())?;       
+
+        if increment.is_some() {
+            body.push(Expression(Box::new(increment.unwrap())));
+        }
+
+        let while_body = While {
+            condition, 
+            body, 
+        };
+
+        Ok(Block(vec![initializer, while_body]))
+    }
+
+    fn while_stmt(&mut self) -> Result<Stmt, ()> {
+        self.eat_current();
+        let condition = Box::new(self.expr()?);
+
+        self.eat(&TokenType::LBrace, "Need a '{' to begin a while block.".to_string())?;
+        let mut body = vec![];
+        while !self.at_end()
+        && self.peek().kind != TokenType::RBrace {
+            body.push(self.declaration()?);
+        }
+        self.eat(&TokenType::RBrace, "Expect '}' after blocks.".to_string())?;
+
+        Ok(While {
+            condition,
+            body,
+        })
+    }
+
+    fn if_stmt(&mut self) -> Result<Stmt, ()> {
+        self.eat_current();
+        let condition = Box::new(self.expr()?);
+
+        self.eat(&TokenType::LBrace, "Need a '{' to begin an if branch.".to_string())?;
+
+        let mut then_branch = vec![];
+        let mut else_branch = None;
+        while self.peek().kind != TokenType::RBrace
+        && !self.at_end() {
+            then_branch.push(self.declaration()?);
+        }
+        self.eat(&TokenType::RBrace, "Expect '}' after blocks .".to_string())?;
+
+        if self.peek().kind == TokenType::Else {
+            let mut s = vec![];
+            self.eat_current();
+            self.eat(&TokenType::LBrace, "Need a '{' to begin an else branch.".to_string())?;
+            while self.peek().kind != TokenType::RBrace
+            && !self.at_end() {
+                s.push(self.declaration()?);
+            }
+            self.eat(&TokenType::RBrace, "Expect '}' after blocks.".to_string())?;
+            else_branch = Some(s);
+        }
+
+        Ok(If { 
+            condition, 
+            then_branch, 
+            else_branch,
+        })
+    }
+
+    fn var_stmt(&mut self) -> Result<Stmt, ()> {
+        self.eat_current();
+        let token = self.eat(&TokenType::Identifier, "Expect a variable name.".to_string())?;
+
+        let mut initializer = Box::new(Literal(Value::Nil));
+        if self.peek().kind == TokenType::Equal {
+            self.eat_current();
+            initializer = Box::new(self.expr()?);
+        }
+        self.eat(&TokenType::SemiColon, "Expect ';' at the end".to_string())?;
+
+        Ok(VarDecl {
+            variable: match token.lexeme.unwrap() {
+                Value::String(s) => s,
+                _ => unreachable!(),
+            },
+            defined_line: token.line,
+            initializer,
+        })
+    }
+
+    fn block(&mut self) -> Result<Vec<Stmt>, ()> {
+        self.eat_current();
+
+        let mut statements = vec![];
+        while self.peek().kind != TokenType::RBrace
+        && !self.at_end() {
+            statements.push(self.declaration()?);
+        }
+
+        self.eat(&TokenType::RBrace, "Expect '}' after blocks.".to_string())?;
+        
+        Ok(statements)
+    } 
+
+    fn print_stmt(&mut self) -> Result<Stmt, ()> {
+        self.eat_current();
+        let expr = Box::new(self.expr()?);
+        self.eat(&TokenType::SemiColon, "Expected ';' at the end.".to_string())?;
+        Ok(Print(expr))
+    }
+
+    fn expr_stmt(&mut self) -> Result<Stmt, ()> {
+        let expr = Box::new(self.expr()?);
+        self.eat(&TokenType::SemiColon, "Expected ';' at the end.".to_string())?;
+        Ok(Expression(expr))
     }
 
     fn conjuction(&mut self) -> Result<Expr, ()> {
@@ -37,26 +229,80 @@ impl Parser {
     }
 
     fn expr(&mut self) -> Result<Expr, ()> {
-        self.ternary()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expr, ()> {
+        let ternary = self.ternary()?;
+
+        if self.peek().kind == TokenType::Equal {
+            let equals = self.eat_current();
+            let value = Box::new(self.assignment()?);
+
+            if let Variable { name, refed_line } = ternary {
+                return Ok(AssignExpr { 
+                    name, 
+                    refed_line, 
+                    value, 
+                });
+            }
+
+            error::report(Error::invalid_assign_error(equals.line));
+            return Err(())
+        }
+
+        Ok(ternary)
     }
 
 
     fn ternary(&mut self) -> Result<Expr, ()> {
-        let equa = self.equality()?;
+        let lor = self.logic_or()?;
         if self.peek().kind == TokenType::Question {
             let q = self.eat_current();
             let true_branch = Box::new(self.expr()?);
-            self.eat(&TokenType::Colon, "Expected a ':'.".to_string());
+            self.eat(&TokenType::Colon, "Expected a ':'.".to_string())?;
             let false_branch = Box::new(self.expr()?);
             return Ok(TernaryExpr {
-                condition: Box::new(equa),
+                condition: Box::new(lor),
                 true_branch,
                 false_branch,
                 line: q.line,
             })
         } else {
-            Ok(equa)
+            Ok(lor)
         }
+    }
+
+    fn logic_or(&mut self) -> Result<Expr, ()> {
+        let mut lor = self.logic_and()?;
+
+        while self.peek().kind == TokenType::Or {
+            let or = self.eat_current();
+            lor = BinaryExpr { 
+                left: Box::new(lor), 
+                op: BinaryOp::Or,
+                right: Box::new(self.logic_and()?), 
+                line: or.line 
+            };
+        }
+
+        Ok(lor)
+    }
+
+    fn logic_and(&mut self) -> Result<Expr, ()> {
+        let mut land = self.equality()?;
+        
+        while self.peek().kind == TokenType::And {
+            let and = self.eat_current();
+            land = BinaryExpr { 
+                left: Box::new(land), 
+                op: BinaryOp::And, 
+                right: Box::new(self.equality()?), 
+                line: and.line
+            };
+        }
+
+        Ok(land)
     }
 
     fn equality(&mut self) -> Result<Expr, ()> {
@@ -178,14 +424,22 @@ impl Parser {
             TokenType::True => Ok(Literal(Value::Boolean(true))),
             TokenType::Number => Ok(Literal(token.lexeme.unwrap())),
             TokenType::String => Ok(Literal(token.lexeme.unwrap())),
+            TokenType::Identifier => Ok(Variable {
+                name: match token.lexeme.unwrap() {
+                    Value::String(s) => s,
+                    _ => unreachable!(),
+                },
+                refed_line: token.line,
+            }),
             TokenType::LParen => {
-                let e = self.expr();
+                let expr = Box::new(self.expr()?);
                 self.eat(&TokenType::Rparen, "Expect ')' after expression.".to_string())?;
-                e
+                Ok(Expr::GroupExpr { expr })
             }
             _ => {
                 error::report(Error::new(ErrorType::ParserError, 
                 format!("Expected an expression."), token.line));
+                self.has_error = true;
                 Err(())
             }
         }
@@ -196,7 +450,8 @@ impl Parser {
             Ok(self.eat_current())
         } else {
             error::report(Error::new(ErrorType::ParserError, 
-                msg, self.peek().line));
+                msg, self.previous().line));
+            self.has_error = true;
             Err(())
         }
     }

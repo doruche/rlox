@@ -1,10 +1,12 @@
-#![allow(unused)]
-
 use crate::common::*;
 
 #[derive(Debug)]
 pub enum Expr {
     Literal(Value),
+    Variable {
+        name: String,
+        refed_line: usize,
+    },
     UnaryExpr {
         op: UnaryOp,
         expr: Box<Expr>,
@@ -21,6 +23,14 @@ pub enum Expr {
         true_branch: Box<Expr>,
         false_branch: Box<Expr>,
         line: usize,
+    },
+    GroupExpr {
+        expr: Box<Expr>,
+    },
+    AssignExpr {
+        name: String,
+        refed_line: usize,
+        value: Box<Expr>,
     },
     ConjunctionExpr {
         exprs: Vec<Expr>,

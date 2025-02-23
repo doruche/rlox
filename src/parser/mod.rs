@@ -1,5 +1,7 @@
 mod parser;
-mod ast;
+mod expr;
+mod stmt;
 
 pub use parser::Parser;
-pub use ast::{Expr, BinaryOp, UnaryOp};
+pub use expr::{Expr, BinaryOp, UnaryOp};
+pub use stmt::{Stmt};

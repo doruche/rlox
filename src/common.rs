@@ -33,6 +33,23 @@ impl PartialEq for Value {
 }
 
 impl Value {
+    fn stringfy(&self) -> String {
+        match self {
+            Value::String(s) => s.clone(),
+            Boolean(b) => b.to_string(),
+            Nil => "nil".to_string(),
+            Number(n) => n.to_string(),
+        }
+    }
+}
+
+impl From<String> for Value {
+    fn from(value: String) -> Self {
+        Value::String(value)
+    }
+}
+
+impl Value {
     pub fn is_truthy(&self) -> bool {
         match self {
             Nil => false,
@@ -59,10 +76,20 @@ impl Value {
         }
     }
 
+    pub fn logic_and(self, other: &Self) -> bool {
+        self.is_truthy() && other.is_truthy()
+    }
+
+    pub fn logic_or(self, other: &Self) -> bool {
+        self.is_truthy() | other.is_truthy()
+    }
+
     pub fn add(self, other: &Self) -> Result<Value, ()> {
         match (self, other) {
             (Number(a), Number(b)) => Ok(Number(a + b)),
             (Value::String(a), Value::String(b)) => Ok(Value::String(a.clone() + b)),
+            (Value::String(a), b) => Ok(Value::String(a + &b.stringfy())),
+            (a, Value::String(b)) => Ok(Value::String(b.clone() + &a.stringfy())),
             _ => Err(()),
         }
     }

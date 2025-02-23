@@ -39,6 +39,16 @@ impl Error {
         Error::new(RuntimeError, 
             "Operand must be a number".to_string(), line)
     }
+
+    pub fn variavle_undefined_error(name: &str, refed_line: usize) -> Self {
+        Error::new(RuntimeError,
+            format!("Undefined variable '{}'.", name), refed_line)
+    }
+
+    pub fn invalid_assign_error(refed_line: usize) -> Self {
+        Error::new(ParserError, 
+            format!("Invalid assignment target."), refed_line)
+    }
 }
 
 pub fn report(error: Error) {
