@@ -25,40 +25,42 @@ impl Parser {
         }
     }
 
-    pub fn parse_prog(mut self) -> Result<Vec<Stmt>, ()> {
+    pub fn parse_prog(mut self) -> Result<Vec<Stmt>, Vec<Error>> {
         let mut prog = vec![];
+        let mut errors = vec![];
         while !self.at_end() {
-            let stmt = self.declaration();
-            if let Ok(stmt) = stmt {
-                prog.push(stmt);
+            match self.declaration() {
+                Ok(stmt) => prog.push(stmt),
+                Err(e) => errors.push(e),
             }
         }
         if self.has_error {
-            return Err(());
+            return Err(errors);
         }
         Ok(prog)
     }
 
-    pub fn parse_expr(mut self) -> Result<Expr, ()> {
+    pub fn parse_expr(mut self) -> Result<Expr, Error> {
         self.expr()
     }
 
-    fn declaration(&mut self) -> Result<Stmt, ()> {
+    fn declaration(&mut self) -> Result<Stmt, Error> {
         let stmt = if self.peek().kind == TokenType::Var {
             self.var_stmt()
         } else {
             self.statement()
         };
-        if stmt.is_ok() {
-            stmt
-        } else {
-            self.has_error = true;
-            self.synchronize();
-            Err(())
+        match stmt {
+            s @Ok(_) => s,
+            Err(e) => {
+                self.has_error = true;
+                self.synchronize();
+                Err(e)
+            }
         }
     }
 
-    fn statement(&mut self) -> Result<Stmt, ()> {
+    fn statement(&mut self) -> Result<Stmt, Error> {
         match self.peek().kind {
             TokenType::If => self.if_stmt(),
             TokenType::While => self.while_stmt(),
@@ -75,7 +77,7 @@ impl Parser {
         Empty
     }
 
-    fn for_stmt(&mut self) -> Result<Stmt, ()> {
+    fn for_stmt(&mut self) -> Result<Stmt, Error> {
         self.eat_current();
 
         self.eat(&TokenType::LParen, "Expect '(' after 'for'.".to_string())?;
@@ -117,7 +119,7 @@ impl Parser {
         Ok(Block(vec![initializer, while_body]))
     }
 
-    fn while_stmt(&mut self) -> Result<Stmt, ()> {
+    fn while_stmt(&mut self) -> Result<Stmt, Error> {
         self.eat_current();
         let condition = Box::new(self.expr()?);
 
@@ -135,7 +137,7 @@ impl Parser {
         })
     }
 
-    fn if_stmt(&mut self) -> Result<Stmt, ()> {
+    fn if_stmt(&mut self) -> Result<Stmt, Error> {
         self.eat_current();
         let condition = Box::new(self.expr()?);
 
@@ -152,13 +154,18 @@ impl Parser {
         if self.peek().kind == TokenType::Else {
             let mut s = vec![];
             self.eat_current();
-            self.eat(&TokenType::LBrace, "Need a '{' to begin an else branch.".to_string())?;
-            while self.peek().kind != TokenType::RBrace
-            && !self.at_end() {
-                s.push(self.declaration()?);
+            if self.peek().kind == TokenType::If {
+                else_branch = Some(vec![self.if_stmt()?]);
             }
-            self.eat(&TokenType::RBrace, "Expect '}' after blocks.".to_string())?;
-            else_branch = Some(s);
+            else {
+                self.eat(&TokenType::LBrace, "Need a '{' to begin an else branch.".to_string())?;
+                while self.peek().kind != TokenType::RBrace
+                && !self.at_end() {
+                    s.push(self.declaration()?);
+                }
+                self.eat(&TokenType::RBrace, "Expect '}' after blocks.".to_string())?;
+                else_branch = Some(s);
+            }
         }
 
         Ok(If { 
@@ -168,7 +175,7 @@ impl Parser {
         })
     }
 
-    fn var_stmt(&mut self) -> Result<Stmt, ()> {
+    fn var_stmt(&mut self) -> Result<Stmt, Error> {
         self.eat_current();
         let token = self.eat(&TokenType::Identifier, "Expect a variable name.".to_string())?;
 
@@ -189,7 +196,7 @@ impl Parser {
         })
     }
 
-    fn block(&mut self) -> Result<Vec<Stmt>, ()> {
+    fn block(&mut self) -> Result<Vec<Stmt>, Error> {
         self.eat_current();
 
         let mut statements = vec![];
@@ -203,20 +210,20 @@ impl Parser {
         Ok(statements)
     } 
 
-    fn print_stmt(&mut self) -> Result<Stmt, ()> {
+    fn print_stmt(&mut self) -> Result<Stmt, Error> {
         self.eat_current();
         let expr = Box::new(self.expr()?);
         self.eat(&TokenType::SemiColon, "Expected ';' at the end.".to_string())?;
         Ok(Print(expr))
     }
 
-    fn expr_stmt(&mut self) -> Result<Stmt, ()> {
+    fn expr_stmt(&mut self) -> Result<Stmt, Error> {
         let expr = Box::new(self.expr()?);
         self.eat(&TokenType::SemiColon, "Expected ';' at the end.".to_string())?;
         Ok(Expression(expr))
     }
 
-    fn conjuction(&mut self) -> Result<Expr, ()> {
+    fn conjuction(&mut self) -> Result<Expr, Error> {
         let mut exprs = vec![self.expr()?];
         
         while matches!(self.peek().kind,
@@ -228,11 +235,11 @@ impl Parser {
         Ok(ConjunctionExpr { exprs })
     }
 
-    fn expr(&mut self) -> Result<Expr, ()> {
+    fn expr(&mut self) -> Result<Expr, Error> {
         self.assignment()
     }
 
-    fn assignment(&mut self) -> Result<Expr, ()> {
+    fn assignment(&mut self) -> Result<Expr, Error> {
         let ternary = self.ternary()?;
 
         if self.peek().kind == TokenType::Equal {
@@ -247,15 +254,14 @@ impl Parser {
                 });
             }
 
-            error::report(Error::invalid_assign_error(equals.line));
-            return Err(())
+            return Err(Error::invalid_assign_error(equals.line))
         }
 
         Ok(ternary)
     }
 
 
-    fn ternary(&mut self) -> Result<Expr, ()> {
+    fn ternary(&mut self) -> Result<Expr, Error> {
         let lor = self.logic_or()?;
         if self.peek().kind == TokenType::Question {
             let q = self.eat_current();
@@ -273,7 +279,7 @@ impl Parser {
         }
     }
 
-    fn logic_or(&mut self) -> Result<Expr, ()> {
+    fn logic_or(&mut self) -> Result<Expr, Error> {
         let mut lor = self.logic_and()?;
 
         while self.peek().kind == TokenType::Or {
@@ -289,7 +295,7 @@ impl Parser {
         Ok(lor)
     }
 
-    fn logic_and(&mut self) -> Result<Expr, ()> {
+    fn logic_and(&mut self) -> Result<Expr, Error> {
         let mut land = self.equality()?;
         
         while self.peek().kind == TokenType::And {
@@ -305,7 +311,7 @@ impl Parser {
         Ok(land)
     }
 
-    fn equality(&mut self) -> Result<Expr, ()> {
+    fn equality(&mut self) -> Result<Expr, Error> {
         let mut equa = self.comparison()?;
 
         while matches!(self.peek().kind,
@@ -327,7 +333,7 @@ impl Parser {
         Ok(equa)
     }
 
-    fn comparison(&mut self) -> Result<Expr, ()> {
+    fn comparison(&mut self) -> Result<Expr, Error> {
         let mut comp = self.term()?;
 
         while matches!(self.peek().kind,
@@ -352,7 +358,7 @@ impl Parser {
         Ok(comp)
     }
 
-    fn term(&mut self) -> Result<Expr, ()> {
+    fn term(&mut self) -> Result<Expr, Error> {
         let mut term = self.factor()?;
 
         while matches!(self.peek().kind,
@@ -374,7 +380,7 @@ impl Parser {
         Ok(term)
     }
 
-    fn factor(&mut self) -> Result<Expr, ()> {
+    fn factor(&mut self) -> Result<Expr, Error> {
         let mut factor = self.unary()?;
 
         while matches!(self.peek().kind,
@@ -396,7 +402,7 @@ impl Parser {
         Ok(factor)
     }
 
-    fn unary(&mut self) -> Result<Expr, ()> {
+    fn unary(&mut self) -> Result<Expr, Error> {
         if matches!(self.peek().kind,
         TokenType::Plus|TokenType::Minus|TokenType::Bang) {
             let token = self.eat_current();
@@ -416,7 +422,7 @@ impl Parser {
         self.primary()
     }
 
-    fn primary(&mut self) -> Result<Expr, ()> { 
+    fn primary(&mut self) -> Result<Expr, Error> { 
         let token = self.eat_current();
         match token.kind {
             TokenType::Nil => Ok(Literal(Value::Nil)),
@@ -437,22 +443,20 @@ impl Parser {
                 Ok(Expr::GroupExpr { expr })
             }
             _ => {
-                error::report(Error::new(ErrorType::ParserError, 
-                format!("Expected an expression."), token.line));
                 self.has_error = true;
-                Err(())
+                Err(Error::new(ErrorType::ParserError, 
+                format!("Expected an expression."), token.line))
             }
         }
     }
 
-    fn eat(&mut self, kind: &TokenType, msg: String) -> Result<Token, ()> {
+    fn eat(&mut self, kind: &TokenType, msg: String) -> Result<Token, Error> {
         if self.peek().kind == *kind {
             Ok(self.eat_current())
         } else {
-            error::report(Error::new(ErrorType::ParserError, 
-                msg, self.previous().line));
             self.has_error = true;
-            Err(())
+            Err(Error::new(ErrorType::ParserError, 
+                msg, self.previous().line))
         }
     }
 

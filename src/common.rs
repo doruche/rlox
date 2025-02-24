@@ -1,5 +1,4 @@
 use Value::{Number, Nil, Boolean};
-use crate::error::{Error, ErrorType};
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -76,13 +75,6 @@ impl Value {
         }
     }
 
-    pub fn logic_and(self, other: &Self) -> bool {
-        self.is_truthy() && other.is_truthy()
-    }
-
-    pub fn logic_or(self, other: &Self) -> bool {
-        self.is_truthy() | other.is_truthy()
-    }
 
     pub fn add(self, other: &Self) -> Result<Value, ()> {
         match (self, other) {

@@ -55,7 +55,7 @@ pub fn report(error: Error) {
     eprintln!("{}", error);
 }
 
-pub fn report_and_suspend(error: Error) -> ! {
+/*pub fn report_and_suspend(error: Error) -> ! {
     eprintln!("{}", error);
     panic!();
-}
+}*/

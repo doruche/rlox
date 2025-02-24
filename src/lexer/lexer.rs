@@ -1,7 +1,5 @@
-use core::num;
-
 use super::{Token, TokenType};
-use crate::{common::Value, error::{self, Error, ErrorType}};
+use crate::{common::Value, error::{Error, ErrorType}};
 
 pub struct Lexer {
     src: Vec<char>,
@@ -12,7 +10,7 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn new(src: String) -> Self {
+    pub fn new(src: &str) -> Self {
         Lexer {
             src: src.chars().collect(),
             line: 1,
@@ -21,26 +19,27 @@ impl Lexer {
         }
     }
 
-    pub fn lex(mut self) -> Option<Vec<Token>> {
-        let mut res = vec![];
+    pub fn lex(mut self) -> Result<Vec<Token>, Vec<Error>> {
+        let mut tokens = vec![];
+        let mut errors = vec![];
         loop {
             match self.next_token() {
-                None => (),
-                Some(token) if token.kind == TokenType::Eof => {
-                    res.push(token);
+                Err(e) => errors.push(e),
+                Ok(token) if token.kind == TokenType::Eof => {
+                    tokens.push(token);
                     break;
                 }
-                Some(token) => res.push(token),
+                Ok(token) => tokens.push(token),
             };
         }
         if self.has_error {
-            None
+            Err(errors)
         } else {
-            Some(res)
+            Ok(tokens)
         }
     }
 
-    pub fn next_token(&mut self) -> Option<Token> {
+    pub fn next_token(&mut self) -> Result<Token, Error> {
 
         use TokenType::*;
         let info = if let Some(ch) = self.advance() {
@@ -78,32 +77,30 @@ impl Lexer {
                 } else {
                     Slash
                 },
-                '"' => return Some(Token::new(String, 
+                '"' => return Ok(Token::new(String, 
                     Some(Value::String(match self.string() {
                         Ok(string) => string,
                         Err(e) => {
                             self.has_error = true;
-                            error::report(e);
-                            return None;
+                            return Err(e);
                         }
                     })), self.line)),
-                '0'..='9' => return Some(Token::new(Number, Some(Value::Number(self.number())), self.line)),
-                _ if ch.is_ascii_alphabetic() || ch == '_' => return Some(self.identifier()),
+                '0'..='9' => return Ok(Token::new(Number, Some(Value::Number(self.number())), self.line)),
+                _ if ch.is_ascii_alphabetic() || ch == '_' => return Ok(self.identifier()),
                 _ => {
-                    error::report(Error::new(
+                    self.has_error = true;
+                    return Err(Error::new(
                         ErrorType::LexerError,
                         format!("Unexpected charatcer {}", ch),
                         self.line
                     ));
-                    self.has_error = true;
-                    return None;
                 },
             }
         } else {
             TokenType::Eof
         };
 
-        Some(Token::new(info, None, self.line))
+        Ok(Token::new(info, None, self.line))
     }
     
     fn at_end(&self) -> bool {
@@ -230,6 +227,8 @@ impl Lexer {
             "true" => TokenType::True,
             "var" => TokenType::Var,
             "while" => TokenType::While,
+            "break" => TokenType::Break,
+            "continue" => TokenType::Continue,
             _ => return Token::new(TokenType::Identifier, Some(Value::String(id)), self.line),
         };
         Token::new(kind, None, self.line)

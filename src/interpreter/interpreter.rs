@@ -47,7 +47,13 @@ impl Interpreter {
                     if self.eval(&condition)?.is_truthy() {
                         self.exec(then_branch)?;
                     } else if else_branch.is_some() {
-                        self.exec(else_branch.as_ref().unwrap())?;
+                        let else_branch = else_branch.as_ref().unwrap();
+                        if else_branch.len() == 1 {
+                            if let Stmt::If{..} = else_branch.first().unwrap() {
+                                self.environment.exit_scope();
+                            }
+                        }
+                        self.exec(else_branch)?;
                     }
                     self.environment.exit_scope();
                 },
@@ -173,7 +179,7 @@ impl Interpreter {
                         }
                     },    
                     BinaryOp::LsEq => {
-                        if let Ok(v) = left.gt(&right) {
+                        if let Ok(v) = left.lseq(&right) {
                             Ok(v)
                         } else {
                             Err(Error::number_operator_error(*line))
