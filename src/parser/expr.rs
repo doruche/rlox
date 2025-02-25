@@ -5,6 +5,7 @@ use crate::error::{Error, ErrorType};
 use crate::lexer::TokenType;
 use Expr::*;
 use super::parser::Parser;
+use super::Stmt;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -17,6 +18,11 @@ pub enum Expr {
         callee: Box<Expr>,
         called_line: usize,
         arguments: Vec<Expr>,
+    },
+    Lambda {
+        params: Vec<String>,
+        body: Vec<Stmt>,
+        defined_line: usize,
     },
     UnaryExpr {
         op: UnaryOp,
@@ -93,13 +99,13 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Result<Expr, Error> {
-        let ternary = self.ternary()?;
+        let expr = self.lambda()?;
 
         if self.peek().kind == TokenType::Equal {
             let equals = self.eat_current();
             let value = Box::new(self.assignment()?);
 
-            if let Variable { name, refed_line } = ternary {
+            if let Variable { name, refed_line } = expr {
                 return Ok(AssignExpr { 
                     name, 
                     refed_line, 
@@ -110,9 +116,60 @@ impl Parser {
             return Err(Error::invalid_assign_error(equals.line))
         }
 
-        Ok(ternary)
+        Ok(expr)
     }
 
+    fn lambda(&mut self) -> Result<Expr, Error> {
+        if self.peek().kind == TokenType::Pipe {
+            let pipe = self.eat_current();
+            
+            let mut params = vec![];
+            if self.peek().kind != TokenType::Pipe {
+                let param = self.eat(&TokenType::Identifier, "Expect parameter name.".to_string())?;
+                let param = param.lexeme.unwrap().stringfy();
+                params.push(param);
+            
+                while self.peek().kind != TokenType::Pipe {
+                    if params.len() >= 16 {
+                        error::report(Error::new(ErrorType::ParserError, 
+                            "Can't have more than 16 arguments.".to_string(), self.peek().line));
+                        self.has_error = true;
+                    }
+                    self.eat(&TokenType::Comma, "Expect ',' after parameters.".to_string())?;
+                    let param = self.eat(&TokenType::Identifier, "Expect parameter name.".to_string())?;
+                    let param = param.lexeme.unwrap().stringfy();
+                    params.push(param);
+                }
+            };
+            self.eat(&TokenType::Pipe, "Expect '|' after parameters.".to_string())?;
+
+            match self.peek().kind {
+                TokenType::LBrace => {
+                    let body = self.block()?;
+                    return Ok(Lambda { 
+                        params, 
+                        body, 
+                        defined_line: pipe.line 
+                    });
+                },
+                _ => {
+                    let value = match self.single_expr() {
+                        Ok(expr) => expr,
+                        Err(_) => return Err(Error::new(ErrorType::ParserError, 
+                            "Expect block or expression as the body.".to_string(), pipe.line)),
+                    };
+                    return Ok(Lambda {
+                        params,
+                        body: vec![Stmt::Return { value: Box::new(value), line: self.previous().line }],
+                        defined_line: pipe.line,
+                    })
+                }
+            };
+        }
+
+
+        self.ternary()
+    }
 
     fn ternary(&mut self) -> Result<Expr, Error> {
         let lor = self.logic_or()?;

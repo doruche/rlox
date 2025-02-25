@@ -203,8 +203,8 @@ impl Parser {
         })
     }
 
-    fn block(&mut self) -> Result<Vec<Stmt>, Error> {
-        self.eat_current();
+    pub(crate) fn block(&mut self) -> Result<Vec<Stmt>, Error> {
+        self.eat(&TokenType::LBrace, "Need a '}' to begin a block".to_string())?;
 
         let mut statements = vec![];
         while self.peek().kind != TokenType::RBrace
@@ -242,15 +242,16 @@ impl Parser {
 
         let mut params = vec![];
         if self.peek().kind != TokenType::Rparen {
-            if params.len() >= 255 {
-                error::report(Error::new(ErrorType::ParserError, 
-                    "Can't have more than 255 arguments.".to_string(), self.peek().line));
-                self.has_error = true;
-            }
             let param = self.eat(&TokenType::Identifier, "Expect parameter name.".to_string())?;
             let param = param.lexeme.unwrap().stringfy();
             params.push(param);
+
             while self.peek().kind != TokenType::Rparen {
+               if params.len() >= 16 {
+                    error::report(Error::new(ErrorType::ParserError, 
+                        "Can't have more than 16 arguments.".to_string(), self.peek().line));
+                    self.has_error = true;
+                }
                 self.eat(&TokenType::Comma, "Expect ',' after parameters.".to_string())?;
                 let param = self.eat(&TokenType::Identifier, "Expect parameter name.".to_string())?;
                 let param = param.lexeme.unwrap().stringfy();

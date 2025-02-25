@@ -165,6 +165,13 @@ impl Interpreter {
                     _ => Err(Error::invalid_call_error(*called_line)),
                 }
             },
+            Expr::Lambda { 
+                params, 
+                body, 
+                defined_line 
+            } => {
+                Ok(Value::Callable(Rc::new(callable::Function::new(None, *defined_line, params.clone(), body.clone()))))
+            }
             Expr::UnaryExpr {
                 op, 
                 expr: uexpr,

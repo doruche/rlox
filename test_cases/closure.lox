@@ -10,4 +10,14 @@ fun make_counter() {
 
 var counter = make_counter();
 
-counter();
+var idx = 0;
+var empty = || {};
+var adder = |base| idx = idx + base;
+var delegator = |time| {
+    for (var i = 0; i < time; i = i + 1) {
+        adder(i);
+    }
+};
+delegator(6);
+print delegator;
+print idx;

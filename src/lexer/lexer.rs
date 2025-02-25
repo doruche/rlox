@@ -56,6 +56,7 @@ impl Lexer {
                 '.' => Dot,
                 '*' => Star,
                 '?' => Question,
+                '|' => Pipe,
                 ' '|'\r'|'\t' => return self.next_token(),
                 '\n' => {
                     self.line += 1;

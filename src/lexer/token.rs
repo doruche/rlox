@@ -38,7 +38,7 @@ pub enum TokenType {
     LBrace, RBrace,
     Comma, Dot, Minus, Plus,
     SemiColon, Slash, Star, Colon,
-    Question,
+    Question, Pipe,
 
     // one or two character
     Bang, BangEqual,
