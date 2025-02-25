@@ -1,4 +1,8 @@
+use std::rc::Rc;
+
 use Value::{Number, Nil, Boolean};
+
+use crate::interpreter::Callable;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -6,6 +10,7 @@ pub enum Value {
     Number(f64),
     Boolean(bool),
     String(String),
+    Callable(Rc<dyn Callable>), // function method
 }
 
 impl std::fmt::Display for Value {
@@ -15,6 +20,7 @@ impl std::fmt::Display for Value {
             Number(n) => write!(f, "{n}"),
             Boolean(b) => write!(f, "{b}"),
             Value::String(s) => write!(f, "\"{s}\""),
+            Value::Callable(c) => write!(f, "{}", c.to_string()),
         }
     }
 }
@@ -32,19 +38,14 @@ impl PartialEq for Value {
 }
 
 impl Value {
-    fn stringfy(&self) -> String {
+    pub fn stringfy(&self) -> String {
         match self {
             Value::String(s) => s.clone(),
             Boolean(b) => b.to_string(),
             Nil => "nil".to_string(),
             Number(n) => n.to_string(),
+            Value::Callable(c) => c.to_string(),
         }
-    }
-}
-
-impl From<String> for Value {
-    fn from(value: String) -> Self {
-        Value::String(value)
     }
 }
 

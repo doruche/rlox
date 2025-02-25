@@ -49,6 +49,21 @@ impl Error {
         Error::new(ParserError, 
             format!("Invalid assignment target."), refed_line)
     }
+
+    pub fn invalid_call_error(called_line: usize) -> Self {
+        Error::new(RuntimeError,
+            format!("Can only call functions and classes."), called_line)
+    }
+
+    pub fn flow_stmt_error(called_line: usize) -> Self {
+        Error::new(RuntimeError, 
+            format!("Continue and break can only be used in loops."), called_line)
+    }
+
+    pub fn invalid_return_error(called_line: usize) -> Self {
+        Error::new(RuntimeError,
+            format!("Can't return outside of functions."), called_line)
+    }
 }
 
 pub fn report(error: Error) {

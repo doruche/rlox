@@ -1,0 +1,31 @@
+fun procedure() {
+    print "don't return anything";
+}
+
+var r = procedure();
+print procedure;
+print r;
+
+fun count(n) {
+    while n < 100 {
+        print n;
+        n = n + 20;
+    }
+}
+
+//count();
+//count(3, 5);
+count(5);
+
+var prod = 1;
+
+fun fact(n) {
+    if n > 1 {
+        prod = prod * n;
+        fact(n-1);
+    }
+}
+
+fact(5);
+print prod;
+

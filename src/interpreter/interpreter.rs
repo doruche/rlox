@@ -1,13 +1,17 @@
 #![allow(unused)]
 
+use std::rc::Rc;
+
 use crate::error::{Error, ErrorType};
 use crate::parser::{Parser, Expr, BinaryOp, UnaryOp, Stmt};
 use crate::common::*;
 
 use super::environment::Environment;
+use super::control_flow::*;
+use super::callable;
 
 pub struct Interpreter {
-    environment: Environment,
+    pub environment: Environment,
 }
 
 impl Interpreter {
@@ -17,9 +21,43 @@ impl Interpreter {
         }
     }
 
-    pub fn exec(&mut self, statements: &Vec<Stmt>) -> Result<(), Error> {
+    pub fn exec(&mut self, statements: &Vec<Stmt>) -> Result<FlowSignal, Error> {
         for stmt in statements {
             match stmt {
+                Stmt::FunDecl {
+                    name,
+                    defined_line,
+                    params,
+                    body,
+                } => {
+                    self.environment.define(name.to_string(), Value::Callable(Rc::new(
+                        callable::Function::new(Some(name.to_string()), *defined_line, params.clone(), body.clone())
+                    )));
+                },
+                Stmt::Return {
+                    value,
+                    line,
+                } => {
+                    if self.environment.contains(FlowContext::Function) {
+                        return Ok(FlowSignal::Return(self.eval(&value)?));
+                    } else {
+                        return Err(Error::invalid_return_error(*line));
+                    }
+                },
+                Stmt::Break(line) => {
+                    if self.environment.contains(FlowContext::Loop) {
+                        return Ok(FlowSignal::Break);
+                    } else {
+                        return Err(Error::flow_stmt_error(*line));
+                    }
+                },
+                Stmt::Continue(line) => {
+                    if self.environment.contains(FlowContext::Loop) {
+                        return Ok(FlowSignal::Continue);
+                    } else {
+                        return Err(Error::flow_stmt_error(*line));
+                    }
+                },
                 Stmt::VarDecl { 
                     variable, 
                     defined_line, 
@@ -30,11 +68,25 @@ impl Interpreter {
                 },
                 Stmt::While {
                     condition, 
-                    body 
+                    body,
+                    increment,
                 } => {
-                    self.environment.enter_scope();
+                    self.environment.enter_scope(FlowContext::Loop);
                     while self.eval(&condition)?.is_truthy() {
-                        self.exec(body)?;
+                        match self.exec(body)? {
+                            FlowSignal::Normal => (),
+                            FlowSignal::Break => break,
+                            FlowSignal::Continue => {
+                                if increment.is_some() {
+                                    self.eval(&increment.as_deref().unwrap())?;
+                                }
+                                continue;
+                            },
+                            r @FlowSignal::Return {..} => {
+                                self.environment.exit_scope();
+                                return Ok(r);
+                            }
+                        }
                     }
                     self.environment.exit_scope();
                 },
@@ -43,17 +95,25 @@ impl Interpreter {
                     then_branch, 
                     else_branch 
                 } => {
-                    self.environment.enter_scope();
+                    self.environment.enter_scope(FlowContext::Block);
                     if self.eval(&condition)?.is_truthy() {
-                        self.exec(then_branch)?;
+                        match self.exec(then_branch)? {
+                            FlowSignal::Normal => (),
+                            r @(FlowSignal::Break|FlowSignal::Continue|FlowSignal::Return(..)) => {
+                                self.environment.exit_scope();
+                                return Ok(r);
+                            },                           
+                        }
                     } else if else_branch.is_some() {
                         let else_branch = else_branch.as_ref().unwrap();
-                        if else_branch.len() == 1 {
-                            if let Stmt::If{..} = else_branch.first().unwrap() {
+
+                        match self.exec(else_branch)? {
+                            FlowSignal::Normal => (),
+                            r @(FlowSignal::Break|FlowSignal::Continue|FlowSignal::Return(..)) => {
                                 self.environment.exit_scope();
-                            }
+                                return Ok(r);
+                            },
                         }
-                        self.exec(else_branch)?;
                     }
                     self.environment.exit_scope();
                 },
@@ -62,23 +122,49 @@ impl Interpreter {
                 },
                 Stmt::Print(expr) => {
                     let v = self.eval(expr)?;
-                    println!("{}", v);
+                    println!("{}", v.stringfy());
                 },
                 Stmt::Block(statements) => {
-                    self.environment.enter_scope();
-                    self.exec(statements)?;
+                    self.environment.enter_scope(FlowContext::Block);
+                    match self.exec(statements)? {
+                        FlowSignal::Normal => (),
+                        r @(FlowSignal::Break|FlowSignal::Continue|FlowSignal::Return(..)) => {
+                            self.environment.exit_scope();
+                            return Ok(r);
+                        },
+                    }
                     self.environment.exit_scope();
                 },
                 Stmt::Empty => (),
             };
         }
-        Ok(())
+        Ok(FlowSignal::Normal)
     }
 
     pub fn eval(&mut self, expr: &Expr) -> Result<Value, Error> {
         match expr {
             Expr::Literal(value) => Ok(value.clone()),
             Expr::Variable { name, refed_line } => Ok(self.environment.lookup(name, *refed_line)?.clone()),
+            Expr::Call {
+                callee, 
+                called_line, 
+                arguments 
+            } => {
+                let callee = self.eval(&callee)?;
+                match callee {
+                    Value::Callable(callee) => {
+                        if arguments.len() as u8 != callee.arity() {
+                            return Err(Error::new(ErrorType::RuntimeError, 
+                                format!("Expected {} arguments but got {}.", callee.arity(), arguments.len()), *called_line))
+                        }
+                        let arguments = arguments.iter()
+                        .map(|arg| self.eval(arg))
+                        .collect::<Result<Vec<Value>, Error>>()?;
+                        callee.call(arguments, self)
+                    },
+                    _ => Err(Error::invalid_call_error(*called_line)),
+                }
+            },
             Expr::UnaryExpr {
                 op, 
                 expr: uexpr,
