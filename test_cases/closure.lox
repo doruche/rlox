@@ -1,32 +1,48 @@
-fun make_counter() {
-    var i = 0;
-    fun count() {
-        i = i + 1;
-        print i;
+var a = "global";
+{
+    fun show() {
+        print a;
     }
 
-    return count;
+    show();
+    var a = "block";
+    show();
 }
+var x = 10;
+var add_x = |y| y + x;
+print add_x(5);
 
-var counter = make_counter();
-counter();
-counter();
-counter();
-var counter = make_counter();
-counter();
-counter();
-counter();
-print counter;
+fun make_closure() {
+    var x = 10;
+    return |y| y + x;
+}
+var closure = make_closure();
+print closure(5);
 
+var add_x = || x = x + 1;
+add_x();
+add_x();
+print x;
 
-var idx = 0;
-var empty = || {};
-var adder = |base| idx = idx + base;
-var delegator = |time| {
-    for (var i = 0; i < time; i = i + 1) {
-        adder(i);
-    }
+x = 10;
+
+var outer_closure = |y| {
+    var z = x + y;
+    return |w| z + w;
 };
-delegator(6);
-print idx;
-print adder;
+var inner_closure = outer_closure(5);
+print inner_closure(3);
+
+var y = 20;
+var add_xy = |z| x + y + z;
+print add_xy(5);
+
+var incre_x = || x = x + 1;
+var decre_x = || x = x - 1;
+print incre_x();
+print decre_x();
+print incre_x();
+
+var get_x = || x;
+x = 20;
+print get_x();

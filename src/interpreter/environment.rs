@@ -4,7 +4,7 @@ use std::{cell::{Ref, RefCell, RefMut}, collections::HashMap, rc::Rc};
 
 use crate::{common::Value, error::Error, parser::Expr};
 
-use super::{control_flow::FlowContext, Interpreter};
+use super::{builtin_func, control_flow::FlowContext, Interpreter};
 
 #[derive(Debug)]
 pub struct Environment {
@@ -49,11 +49,19 @@ impl Context {
 impl Environment {
     pub fn new() -> Self {
         let globals = Context::new(FlowContext::Function, None);
+        Environment::init_builtin(globals.borrow_mut());
         Self {
             context: globals.clone(),
             globals,
             flow_context: FlowContext::Function,
         }
+    }
+
+    fn init_builtin(mut globals: RefMut<Context>) {
+        globals.set("clock".to_string(), Value::Callable(Rc::new(builtin_func::Clock)));
+        globals.set("sleep".to_string(), Value::Callable(Rc::new(builtin_func::Sleep)));
+        globals.set("read_line".to_string(), Value::Callable(Rc::new(builtin_func::ReadLine)));
+        globals.set("to_number".to_string(), Value::Callable(Rc::new(builtin_func::ToNumber)));
     }
 
     pub fn current_context(&self) -> Rc<RefCell<Context>> {
@@ -169,7 +177,7 @@ impl Environment {
         } else {
             match self.globals.borrow().get(name) {
                 Some(value) => Ok(value),
-                None => {println!("enter1");Err(Error::variavle_undefined_error(name, refed_line))}
+                None => Err(Error::variavle_undefined_error(name, refed_line))
             }
         }
     }
@@ -178,12 +186,12 @@ impl Environment {
         if let Some(distance) = distance {
             match self.ancestor(distance).borrow_mut().set(name.to_string(), value) {
                 Some(value) => Ok(value),
-                None => {println!("enter"); Err(Error::variavle_undefined_error(name, refed_line))}
+                None => Err(Error::variavle_undefined_error(name, refed_line))
             }
         } else {
             match self.globals.borrow_mut().set(name.to_string(), value) {
                 Some(value) => Ok(value),
-                None => {println!("enter 4");Err(Error::variavle_undefined_error(name, refed_line))}
+                None => Err(Error::variavle_undefined_error(name, refed_line))
             }
         }
     }

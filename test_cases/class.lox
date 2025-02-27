@@ -1,0 +1,8 @@
+class Maker {
+    serve_on() {
+        return "Scones";
+    }
+}
+var maker = Maker();
+maker.prop = 3;
+print maker.prop;

@@ -47,6 +47,7 @@ impl Error {
             format!("Undefined variable '{}'.", name), refed_line)
     }
 
+
     pub fn invalid_assign_error(refed_line: usize) -> Self {
         Error::new(ParserError, 
             format!("Invalid assignment target."), refed_line)

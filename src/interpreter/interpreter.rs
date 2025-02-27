@@ -28,6 +28,15 @@ impl Interpreter {
     pub fn exec(&mut self, statements: &Vec<Stmt>) -> Result<FlowSignal, Error> {
         for stmt in statements {
             match stmt {
+                Stmt::ClassDecl { 
+                    name, 
+                    defined_line, 
+                    methods 
+                } => {
+                    self.environment.define(name.clone(), Value::Nil);
+                    let class = callable::Class::new(name.clone(), *defined_line);
+                    self.environment.define(name.clone(), Value::Callable(Rc::new(class)));
+                },
                 Stmt::FunDecl {
                     name,
                     defined_line,
@@ -53,14 +62,14 @@ impl Interpreter {
                     if self.environment.contains(FlowContext::Loop) {
                         return Ok(FlowSignal::Break);
                     } else {
-                        return Err(Error::flow_stmt_error(*line));
+                        unreachable!();
                     }
                 },
                 Stmt::Continue(line) => {
                     if self.environment.contains(FlowContext::Loop) {
                         return Ok(FlowSignal::Continue);
                     } else {
-                        return Err(Error::flow_stmt_error(*line));
+                        unreachable!();
                     }
                 },
                 Stmt::VarDecl { 
@@ -149,6 +158,46 @@ impl Interpreter {
     pub fn eval(&mut self, expr: &Expr) -> Result<Value, Error> {
         match expr {
             Expr::Literal(value) => Ok(value.clone()),
+            Expr::Get { 
+                object, 
+                called_line, 
+                name 
+            } => {
+                let object = self.eval(&object)?;
+                if let Value::Instance {
+                    class,
+                    fields,
+                } = object {
+                    if fields.borrow().contains_key(name) {
+                        Ok(fields.borrow().get(name).unwrap().clone())
+                    } else {
+                        Err(Error::new(ErrorType::RuntimeError, 
+                            format!("Undefined property '{name}'."), *called_line))
+                    }
+                } else {
+                    Err(Error::new(ErrorType::RuntimeError, 
+                        "Only instances have properties.".to_string(), *called_line))
+                }
+            },
+            Expr::Set { 
+                object, 
+                called_line, 
+                name, 
+                value 
+            } => {
+                let object = self.eval(&object)?;
+                if let Value::Instance { 
+                    class, 
+                    mut fields 
+                } = object {
+                    let value = self.eval(&value)?;
+                    fields.borrow_mut().insert(name.clone(), value.clone());
+                    Ok(value)
+                } else {
+                    Err(Error::new(ErrorType::RuntimeError, 
+                        "Only instances have properties.".to_string(), *called_line))
+                }
+            },
             Expr::Variable {
                 name, 
                 refed_line, 
@@ -169,7 +218,7 @@ impl Interpreter {
                         let arguments = arguments.iter()
                         .map(|arg| self.eval(arg))
                         .collect::<Result<Vec<Value>, Error>>()?;
-                        callee.call(arguments, self)
+                        callee.call(arguments, self, *called_line)
                     },
                     _ => Err(Error::invalid_call_error(*called_line)),
                 }

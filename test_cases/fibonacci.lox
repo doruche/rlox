@@ -7,7 +7,11 @@ fun fib_rec(n) {
 }
 
 print "fib_rec";
-for (var i = 1; i < 20; i = i + 1) {
+var begin = clock();
+for (var i = 1; i < 30; i = i + 1) {
     print fib_rec(i);
 }
-//print fib_rec(4);
+var after = clock();
+print begin;
+print after;
+print after - begin;

@@ -1,8 +1,8 @@
-use std::rc::Rc;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use Value::{Number, Nil, Boolean};
 
-use crate::interpreter::Callable;
+use crate::interpreter::{Callable, Class};
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -10,7 +10,11 @@ pub enum Value {
     Number(f64),
     Boolean(bool),
     String(String),
-    Callable(Rc<dyn Callable>), // function method
+    Callable(Rc<dyn Callable>),
+    Instance {
+        class: Rc<Class>,
+        fields: Rc<RefCell<HashMap<String, Value>>>,
+    },
 }
 
 impl std::fmt::Display for Value {
@@ -21,6 +25,10 @@ impl std::fmt::Display for Value {
             Boolean(b) => write!(f, "{b}"),
             Value::String(s) => write!(f, "\"{s}\""),
             Value::Callable(c) => write!(f, "{}", c.to_string()),
+            Value::Instance {
+                class,
+                ..
+            } => write!(f, "{} instance", &class.name),
         }
     }
 }
@@ -45,6 +53,7 @@ impl Value {
             Nil => "nil".to_string(),
             Number(n) => n.to_string(),
             Value::Callable(c) => c.to_string(),
+            Value::Instance { class, .. } => format!("{} instance", class.name.clone())
         }
     }
 }

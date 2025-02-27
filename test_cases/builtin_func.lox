@@ -1,0 +1,9 @@
+var before = clock();
+sleep(2000);
+var after = clock();
+print "slept for " + (after - before) + " millionseconds.";
+
+print "read input...";
+var input = read_line();
+print "received: " + input;
+print "which is " + to_number(input);

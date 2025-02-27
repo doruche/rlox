@@ -64,12 +64,17 @@ fn eval(src: &str, interpreter: &mut Interpreter) -> Result<Value, Vec<Error>> {
     };
 
     let parser = Parser::new(tokens);
-    let expr = match parser.parse_expr() {
+    let mut expr = match parser.parse_expr() {
         Ok(v) => v,
         Err(error) => {
             return Err(vec![error])
         },
     };
+
+    let mut resolver = Resolver::new(interpreter);
+    if let Err(e) = resolver.resolve_expr(&mut expr) {
+        return Err(vec![e]);
+    }
 
     match interpreter.eval(&expr) {
         Ok(v) => Ok(v),
@@ -92,7 +97,9 @@ fn exec(src: &str, interpreter: &mut Interpreter) -> Result<(), Vec<Error>> {
     };
 
     let mut resolver = Resolver::new(interpreter);
-    resolver.resolve_stmt(&mut ast);
+    if let Err(e) = resolver.resolve_stmt(&mut ast) {
+        return Err(vec![e]);
+    }
 
     let res = interpreter.exec(&ast);
     match res {

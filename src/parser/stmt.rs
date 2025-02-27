@@ -21,6 +21,11 @@ pub enum Stmt {
         body: Vec<Stmt>,
         increment: Option<Box<Expr>>,
     },
+    ClassDecl {
+        name: String,
+        defined_line: usize,
+        methods: Vec<Stmt>,
+    },
     FunDecl {
         name: String,
         defined_line: usize,
@@ -47,7 +52,8 @@ pub enum Stmt {
 impl Parser {
     pub(crate) fn declaration(&mut self) -> Result<Stmt, Error> {
         let stmt = match self.peek().kind {
-            TokenType::Fun => self.fun_stmt("function"),
+            TokenType::Class => self.class_decl(),
+            TokenType::Fun => self.fun_decl(),
             TokenType::Var => self.var_stmt(),
             _ => self.statement(),
         };
@@ -234,9 +240,31 @@ impl Parser {
 
 // function and method
 impl Parser {
-  
-    fn fun_stmt(&mut self, kind: &'static str) -> Result<Stmt, Error> {
+    fn class_decl(&mut self) -> Result<Stmt, Error> {
         self.eat_current();
+        let token = self.eat(&TokenType::Identifier, format!("Expect class name"))?;
+        self.eat(&TokenType::LBrace, "Need a '{' to begin class body.".to_string())?;
+
+        let mut methods = vec![];
+        while !self.at_end() && self.peek().kind != TokenType::RBrace {
+            methods.push(self.fun_stmt("methods")?);
+        }
+        
+        self.eat(&TokenType::RBrace, "Expect '}' after class body".to_string())?;
+
+        Ok(ClassDecl { 
+            name: token.lexeme.unwrap().stringfy(), 
+            defined_line: token.line, 
+            methods, 
+        })        
+    }
+
+    fn fun_decl(&mut self) -> Result<Stmt, Error> {
+        self.eat_current();
+        self.fun_stmt("function")
+    }
+
+    fn fun_stmt(&mut self, kind: &'static str) -> Result<Stmt, Error> {
         let token = self.eat(&TokenType::Identifier, format!("Expect {kind} name."))?;
         self.eat(&TokenType::LParen, "Need a '(' to begin the parameter list.".to_string())?;
 

@@ -20,6 +20,17 @@ pub enum Expr {
         called_line: usize,
         arguments: Vec<Expr>,
     },
+    Get {
+        object: Box<Expr>,
+        called_line: usize,
+        name: String, 
+    },
+    Set {
+        object: Box<Expr>,
+        called_line: usize,
+        name: String,
+        value: Box<Expr>,
+    },
     Lambda {
         params: Vec<String>,
         body: Vec<Stmt>,
@@ -110,6 +121,17 @@ impl Parser {
                     value,
                     resolve_distance: None,
                 });
+            } else if let Get { 
+                object, 
+                called_line, 
+                name 
+            } = expr {
+                return Ok(Set { 
+                    object, 
+                    called_line, 
+                    name, 
+                    value,
+                })
             }
 
             return Err(Error::invalid_assign_error(equals.line))
@@ -335,11 +357,21 @@ impl Parser {
         let mut cal = self.primary()?;
 
         loop {
-            if self.peek().kind == TokenType::LParen {
-                self.eat_current();
-                cal = self.finish_call(cal)?;
-            } else {
-                break;
+            match self.peek().kind {
+                TokenType::LParen => {
+                    self.eat_current();
+                    cal = self.finish_call(cal)?;
+                }
+                TokenType::Dot => {
+                    self.eat_current();
+                    let property = self.eat(&TokenType::Identifier, "Expect property name after '.'.".to_string())?;
+                    cal = Get {
+                        object: Box::new(cal), 
+                        called_line: property.line,
+                        name: property.lexeme.unwrap().stringfy()
+                    };
+                }
+                _ => break,
             }
         }
 
