@@ -2,6 +2,7 @@
 pub enum ErrorType {
     LexerError,
     ParserError,
+    SemanticError,
     RuntimeError,
 }
 
@@ -19,6 +20,7 @@ impl std::fmt::Display for Error {
         match &self.kind {
             LexerError => write!(f, "Lexical Error at line {}: {}", self.line, self.message),
             ParserError => write!(f, "Parsing Error at line {}: {}", self.line, self.message),
+            SemanticError => write!(f, "Semantic Error at line {}: {}", self.line, self.message),
             RuntimeError => write!(f, "Runtime Error at line {}: {}", self.line, self.message),
         }
     }
@@ -41,7 +43,7 @@ impl Error {
     }
 
     pub fn variavle_undefined_error(name: &str, refed_line: usize) -> Self {
-        Error::new(RuntimeError,
+        Error::new(SemanticError,
             format!("Undefined variable '{}'.", name), refed_line)
     }
 
@@ -56,12 +58,12 @@ impl Error {
     }
 
     pub fn flow_stmt_error(called_line: usize) -> Self {
-        Error::new(RuntimeError, 
+        Error::new(SemanticError, 
             format!("Continue and break can only be used in loops."), called_line)
     }
 
     pub fn invalid_return_error(called_line: usize) -> Self {
-        Error::new(RuntimeError,
+        Error::new(SemanticError,
             format!("Can't return outside of functions."), called_line)
     }
 }

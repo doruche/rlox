@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use std::{f32::consts::E, fs, io::{self, BufRead, Write}, process};
-use crate::{common::Value, lexer::{self, Lexer}};
+use crate::{common::Value, lexer::{self, Lexer}, resolver::Resolver};
 use crate::parser::Parser;
 use crate::interpreter::Interpreter;
 use crate::error::{self, Error};
@@ -84,12 +84,15 @@ fn exec(src: &str, interpreter: &mut Interpreter) -> Result<(), Vec<Error>> {
     };
 
     let parser = Parser::new(tokens);
-    let ast = match parser.parse_prog() {
+    let mut ast = match parser.parse_prog() {
         Ok(v) => v,
         Err(errors) => {
             return Err(errors);
         }
     };
+
+    let mut resolver = Resolver::new(interpreter);
+    resolver.resolve_stmt(&mut ast);
 
     let res = interpreter.exec(&ast);
     match res {

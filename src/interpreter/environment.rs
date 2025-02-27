@@ -1,142 +1,190 @@
 #![allow(unused)]
 
-use std::collections::HashMap;
+use std::{cell::{Ref, RefCell, RefMut}, collections::HashMap, rc::Rc};
 
-use crate::{common::Value, error::Error};
+use crate::{common::Value, error::Error, parser::Expr};
 
-use super::control_flow::FlowContext;
+use super::{control_flow::FlowContext, Interpreter};
 
 #[derive(Debug)]
 pub struct Environment {
-    contexts: Vec<Context>,
+    context: Rc<RefCell<Context>>,
+    globals: Rc<RefCell<Context>>,
+    flow_context: FlowContext,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct Context {
     values: HashMap<String, Value>,
+    enclosing: Option<Rc<RefCell<Context>>>,
     flow_context: FlowContext,
 }
 
 impl Context {
-    pub fn new(flow_context: FlowContext) -> Self {
-        Context {
+    pub fn new(flow_context: FlowContext, enclosing: Option<Rc<RefCell<Self>>>) -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(Context {
             values: HashMap::new(),
+            enclosing,
             flow_context,
-        }
+        }))
     }
 
-    pub fn define(&mut self, name: String, value: Value) -> Option<Value> {
-        self.values.insert(name, value)
+    pub fn set(&mut self, name: String, value: Value) -> Option<Value>{
+        self.values.insert(name, value).map(|v| v.clone())
     }
 
-    pub fn get(&self, name: &str) -> Option<&Value> {
-        self.values.get(name)
-    }
- 
-    pub fn get_mut(&mut self, name: &str) -> Option<&mut Value> {
-        self.values.get_mut(name)
-    }
- 
-    pub fn update(&mut self, name: String, value: Value) -> Result<(), String> {
-        if self.values.contains_key(&name) {
-            self.values.insert(name, value);
-            Ok(())
-        } else {
-            Err(format!("Variable '{}' not defined", name))
-        }
+    pub fn get(&self, name: &str) -> Option<Value> {
+        self.values.get(name).map(|v|  v.clone())
     }
 
     pub fn contains(&self, name: &str) -> bool {
         self.values.contains_key(name)
     }
 
-    // 别名方法
-    pub fn set(&mut self, name: String, value: Value) -> Option<Value> {
-        self.define(name, value)
+    pub fn get_closing(&self) -> Option<Rc<RefCell<Context>>> {
+        self.enclosing.clone()
     }
 }
 
 impl Environment {
     pub fn new() -> Self {
+        let globals = Context::new(FlowContext::Function, None);
         Self {
-            contexts: vec![Context::new(FlowContext::Function)],
+            context: globals.clone(),
+            globals,
+            flow_context: FlowContext::Function,
         }
     }
 
+    pub fn current_context(&self) -> Rc<RefCell<Context>> {
+        self.context.clone()
+    }
+
+    pub fn capture_context(&self) -> Rc<RefCell<Context>> {
+        self.current_context().clone()
+    }
+
+    pub fn set_context(&mut self, context: &Rc<RefCell<Context>>) {
+        self.flow_context = context.borrow().flow_context;
+        self.context = context.clone();
+    }
+
+    pub fn enter_closure(&mut self, closure: &Rc<RefCell<Context>>) {
+        self.set_context(closure);
+        self.enter_scope(FlowContext::Function);
+    }
+
+    pub fn exit_closure(&mut self, previous: &Rc<RefCell<Context>>) {
+        self.exit_scope();
+        self.set_context(previous);
+    }
+
     pub fn enter_scope(&mut self, flow_context: FlowContext) {
-        self.contexts.push(Context::new(flow_context));
+        self.flow_context = flow_context;
+        self.context = Context::new(flow_context, Some(self.context.clone()));
         //println!("\tENTER SCOPE\n\t{:?}", self.current_context());
     }
 
     pub fn exit_scope(&mut self) {
-        self.contexts.pop().unwrap();
+        let enclosing = self.context.borrow().get_closing().unwrap();
+        self.flow_context = enclosing.borrow().flow_context;
+        self.context = enclosing;
         //println!("\tEXIT SCOPE\n\t{:?}", self.contexts.pop().unwrap());
     }
 
-    pub fn current_context_mut(&mut self) -> &mut Context {
-        if let Some(scope) = self.contexts.last_mut() {
-            scope
-        } else {
-            panic!("no active scope");
-        }
-    }
-  
-    pub fn current_context(&self) -> &Context {
-        if let Some(scope) = self.contexts.last() {
-            scope
-        } else {
-            panic!("no active scope");
-        }
+    pub fn define(&mut self, name: String, value: Value)  {
+        self.context.borrow_mut().set(name, value);
     }
 
-
-    pub fn define(&mut self, name: String, value: Value) -> Option<Value> {
-        self.current_context_mut().define(name, value)
-    }
-
-    pub fn lookup(&self, name: &str, refed_line: usize) -> Result<&Value, Error> {
-        for scope in self.contexts.iter().rev() {
-            if scope.contains(name) {
-                return Ok(scope.get(name).unwrap())
+    pub fn lookup(&self, name: &str, refed_line: usize) -> Result<Value, Error> {
+        let mut context = self.context.clone();
+        loop {
+            if context.borrow().contains(name) {
+                return Ok(context.borrow().get(name).unwrap())
+            }
+            let enclosing = context.borrow().get_closing();
+            if let Some(enclosing) = enclosing {
+                context = enclosing;
+            } else {
+                return Err(Error::variavle_undefined_error(name, refed_line));
             }
         }
-        Err(Error::variavle_undefined_error(name, refed_line))
     }
 
-    pub fn lookup_mut(&mut self, name: &str, refed_line: usize) -> Result<&mut Value, Error> {
-        for scope in self.contexts.iter_mut().rev() {
-            if scope.contains(name) {
-                return Ok(scope.get_mut(name).unwrap())
+    pub fn update(&mut self, name: &str, refed_line: usize, value: Value) -> Result<Value, Error> {
+        let mut context = self.context.clone();
+        loop {
+            if context.borrow().contains(name) {
+                return Ok(context.borrow_mut().set(name.to_string(), value).unwrap());
+            }
+            let enclosing = context.borrow().get_closing();
+            if let Some(enclosing) = enclosing {
+                context = enclosing;
+            } else {
+                return Err(Error::variavle_undefined_error(name, refed_line));
             }
         }
-        Err(Error::variavle_undefined_error(name, refed_line))
     }
 }
 
 impl Environment {
 
     pub fn current_flow_context(&self) -> FlowContext {
-        self.current_context().flow_context
-    }
-
-    pub fn seek_loop(&mut self, called_line: usize) -> Result<(), Error> {
-        while self.contexts.len() != 0
-        && self.current_flow_context() != FlowContext::Loop {
-            self.exit_scope();
-        }
-        if self.current_flow_context() != FlowContext::Loop {
-            Err(Error::flow_stmt_error(called_line))
-        } else {
-            Ok(())
-        }
+        self.current_context().borrow().flow_context
     }
 
     pub fn contains(&self, flow_context: FlowContext) -> bool {
-        for context in self.contexts.iter().rev() {
-            if context.flow_context == flow_context {
+        let mut context = self.context.clone();
+        loop {
+            if context.borrow().flow_context == flow_context {
                 return true;
             }
+            let enclosing = context.borrow().get_closing();
+            if let Some(enclosing) = enclosing {
+                context = enclosing;
+            } else {
+                return false;
+            }
         }
-        return false;    
+    }
+}
+
+impl Environment {
+    fn ancestor(&self, distance: usize) -> Rc<RefCell<Context>> {
+        let mut context = self.context.clone();
+        for i in 0..distance {
+            let enclosing = context.borrow().get_closing().unwrap().clone();
+            context = enclosing;
+        }
+        context
+    }
+
+    pub fn lookup_at(&self, name: &str, distance: Option<usize>, refed_line: usize) -> Result<Value, Error> {
+        if let Some(distance) = distance {
+            //println!("\t{name}\t{distance} refef_line: {refed_line}");
+            match self.ancestor(distance).borrow().get(name) {
+                Some(value) => Ok(value),
+                None => unreachable!(),
+            }
+        } else {
+            match self.globals.borrow().get(name) {
+                Some(value) => Ok(value),
+                None => {println!("enter1");Err(Error::variavle_undefined_error(name, refed_line))}
+            }
+        }
+    }
+
+    pub fn update_at(&mut self, name: &str, distance: Option<usize>, refed_line: usize, value: Value) -> Result<Value, Error> {
+        if let Some(distance) = distance {
+            match self.ancestor(distance).borrow_mut().set(name.to_string(), value) {
+                Some(value) => Ok(value),
+                None => {println!("enter"); Err(Error::variavle_undefined_error(name, refed_line))}
+            }
+        } else {
+            match self.globals.borrow_mut().set(name.to_string(), value) {
+                Some(value) => Ok(value),
+                None => {println!("enter 4");Err(Error::variavle_undefined_error(name, refed_line))}
+            }
+        }
     }
 }

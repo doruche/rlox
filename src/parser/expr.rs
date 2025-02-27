@@ -13,6 +13,7 @@ pub enum Expr {
     Variable {
         name: String,
         refed_line: usize,
+        resolve_distance: Option<usize>,
     },
     Call {
         callee: Box<Expr>,
@@ -41,17 +42,14 @@ pub enum Expr {
         false_branch: Box<Expr>,
         line: usize,
     },
-    GroupExpr {
-        expr: Box<Expr>,
-    },
+    GroupExpr(Box<Expr>),
     AssignExpr {
         name: String,
         refed_line: usize,
         value: Box<Expr>,
+        resolve_distance: Option<usize>,
     },
-    ConjunctionExpr {
-        exprs: Vec<Expr>,
-    },
+    ConjunctionExpr(Vec<Expr>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -91,7 +89,7 @@ impl Parser {
             exprs.push(self.single_expr()?);        
         }
 
-        Ok(ConjunctionExpr { exprs })
+        Ok(ConjunctionExpr(exprs))
     }
 
     fn single_expr(&mut self) -> Result<Expr, Error> {
@@ -105,11 +103,12 @@ impl Parser {
             let equals = self.eat_current();
             let value = Box::new(self.assignment()?);
 
-            if let Variable { name, refed_line } = expr {
+            if let Variable { name, refed_line, ..} = expr {
                 return Ok(AssignExpr { 
                     name, 
                     refed_line, 
-                    value, 
+                    value,
+                    resolve_distance: None,
                 });
             }
 
@@ -385,11 +384,12 @@ impl Parser {
                     _ => unreachable!(),
                 },
                 refed_line: token.line,
+                resolve_distance: None,
             }),
             TokenType::LParen => {
                 let expr = Box::new(self.conjuction()?);
                 self.eat(&TokenType::Rparen, "Expect ')' after expression.".to_string())?;
-                Ok(Expr::GroupExpr { expr })
+                Ok(Expr::GroupExpr(expr))
             }
             _ => {
                 self.has_error = true;

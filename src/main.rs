@@ -1,6 +1,7 @@
 mod lexer;
 mod error;
 mod parser;
+mod resolver;
 mod interpreter;
 mod common;
 mod repl;

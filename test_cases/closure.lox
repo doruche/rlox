@@ -9,6 +9,15 @@ fun make_counter() {
 }
 
 var counter = make_counter();
+counter();
+counter();
+counter();
+var counter = make_counter();
+counter();
+counter();
+counter();
+print counter;
+
 
 var idx = 0;
 var empty = || {};
@@ -19,5 +28,5 @@ var delegator = |time| {
     }
 };
 delegator(6);
-print delegator;
 print idx;
+print adder;

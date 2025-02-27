@@ -1,12 +1,14 @@
 #![allow(unused)]
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::error::{Error, ErrorType};
 use crate::parser::{Parser, Expr, BinaryOp, UnaryOp, Stmt};
 use crate::common::*;
 
-use super::environment::Environment;
+use super::environment::{Context, Environment};
 use super::control_flow::*;
 use super::callable;
 
@@ -16,8 +18,10 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
+        let environment = Environment::new();
+        
         Self {
-            environment: Environment::new(),
+            environment,
         }
     }
 
@@ -30,8 +34,9 @@ impl Interpreter {
                     params,
                     body,
                 } => {
-                    self.environment.define(name.to_string(), Value::Callable(Rc::new(
-                        callable::Function::new(Some(name.to_string()), *defined_line, params.clone(), body.clone())
+                    let closure = self.environment.capture_context();
+                    self.environment.define(name.clone(), Value::Callable(Rc::new(
+                        callable::Function::new(Some(name.clone()), *defined_line, params.clone(), body.clone(), closure)
                     )));
                 },
                 Stmt::Return {
@@ -144,7 +149,11 @@ impl Interpreter {
     pub fn eval(&mut self, expr: &Expr) -> Result<Value, Error> {
         match expr {
             Expr::Literal(value) => Ok(value.clone()),
-            Expr::Variable { name, refed_line } => Ok(self.environment.lookup(name, *refed_line)?.clone()),
+            Expr::Variable {
+                name, 
+                refed_line, 
+                resolve_distance
+            } => self.environment.lookup_at(name, *resolve_distance, *refed_line),
             Expr::Call {
                 callee, 
                 called_line, 
@@ -170,7 +179,8 @@ impl Interpreter {
                 body, 
                 defined_line 
             } => {
-                Ok(Value::Callable(Rc::new(callable::Function::new(None, *defined_line, params.clone(), body.clone()))))
+                Ok(Value::Callable(Rc::new(callable::Function::new(
+                    None, *defined_line, params.clone(), body.clone(), self.environment.capture_context()))))
             }
             Expr::UnaryExpr {
                 op, 
@@ -296,18 +306,17 @@ impl Interpreter {
                     self.eval(&false_branch)
                 }
             },
-            Expr::GroupExpr { expr } => self.eval(&expr),
+            Expr::GroupExpr(expr) => self.eval(&expr),
             Expr::AssignExpr {
                 name, 
                 refed_line, 
-                value 
+                value ,
+                resolve_distance,
             } => {
                 let value = self.eval(&value)?;
-                let variable = self.environment.lookup_mut(name, *refed_line)?;
-                *variable = value.clone();
-                Ok(value)
+                self.environment.update_at(name, *resolve_distance, *refed_line, value)
             },
-            Expr::ConjunctionExpr { exprs } => {
+            Expr::ConjunctionExpr(exprs) => {
                 let mut res = Value::Nil;
                 for cexpr in exprs {
                     res = self.eval(cexpr)?;
