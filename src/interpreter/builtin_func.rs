@@ -4,7 +4,7 @@ use std::io::BufRead;
 use std::{io, thread, time};
 use crate::common::Value;
 use crate::error::{Error, ErrorType};
-use super::Callable;
+use super::{callable, Callable};
 
 #[derive(Debug)]
 pub struct Clock;
@@ -16,6 +16,9 @@ pub struct ReadLine;
 pub struct ToNumber;
 #[derive(Debug)]
 pub struct Len;
+
+#[derive(Debug)]
+pub struct TypeOf;
 
 impl Callable for Clock {
     fn call(&self, arguments: Vec<crate::common::Value>, interpreter: &mut super::Interpreter, called_line: usize) -> Result<Value, Error> {
@@ -121,5 +124,32 @@ impl Callable for Len {
 
     fn to_string(&self) -> String {
         "<native len>".to_string()
+    }
+}
+
+impl Callable for TypeOf {
+    fn call(&self, arguments: Vec<Value>, interpreter: &mut super::Interpreter, called_line: usize) -> Result<Value, Error> {
+        if let Some(value) = arguments.first() {
+            Ok(Value::String(match value {
+                Value::Nil => "nil",
+                Value::Number(..) => "number",
+                Value::Array(..) => "array",
+                Value::Boolean(..) => "boolean",
+                Value::Callable(..) => "callable",
+                Value::Instance {..} => "instance",
+                Value::String(..) => "string",
+            }.to_string()))
+        } else {
+            Err(Error::new(ErrorType::RuntimeError, 
+                "typeof() need an argument.".to_string(), called_line))
+        }
+    }
+
+    fn arity(&self) -> u8 {
+        1
+    }
+
+    fn to_string(&self) -> String {
+        "<native typeof>".to_string()
     }
 }

@@ -64,6 +64,7 @@ impl Environment {
         globals.set("read_line".to_string(), Value::Callable(Rc::new(builtin_func::ReadLine)));
         globals.set("to_number".to_string(), Value::Callable(Rc::new(builtin_func::ToNumber)));
         globals.set("len".to_string(), Value::Callable(Rc::new(builtin_func::Len)));
+        globals.set("typeof".to_string(), Value::Callable(Rc::new(builtin_func::TypeOf)));
     }
 
     pub fn current_context(&self) -> Rc<RefCell<Context>> {
