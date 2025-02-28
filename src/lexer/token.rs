@@ -38,13 +38,15 @@ pub enum TokenType {
     LBrace, RBrace,
     Comma, Dot, Minus, Plus,
     SemiColon, Slash, Star, Colon,
-    Question, Pipe,
+    Question, Pipe, LBlock, RBlock,
 
     // one or two character
     Bang, BangEqual,
     Equal, EqualEqual,
     Greater, GreaterEqual,
     Less, LessEqual,
+    SelfAdd, SelfSub,
+    SelfMul, SelfDiv,
 
     // literals
     Identifier,
@@ -54,7 +56,7 @@ pub enum TokenType {
     // keywords
     And, Class, Else, False, Fun, For, If, Nil, Or,
     Print, Return, Super, This, True, Var, While, Break,
-    Continue,
+    Continue, In,
 
     Eof,
 

@@ -57,11 +57,13 @@ impl Environment {
         }
     }
 
+
     fn init_builtin(mut globals: RefMut<Context>) {
         globals.set("clock".to_string(), Value::Callable(Rc::new(builtin_func::Clock)));
         globals.set("sleep".to_string(), Value::Callable(Rc::new(builtin_func::Sleep)));
         globals.set("read_line".to_string(), Value::Callable(Rc::new(builtin_func::ReadLine)));
         globals.set("to_number".to_string(), Value::Callable(Rc::new(builtin_func::ToNumber)));
+        globals.set("len".to_string(), Value::Callable(Rc::new(builtin_func::Len)));
     }
 
     pub fn current_context(&self) -> Rc<RefCell<Context>> {
@@ -169,7 +171,6 @@ impl Environment {
 
     pub fn lookup_at(&self, name: &str, distance: Option<usize>, refed_line: usize) -> Result<Value, Error> {
         if let Some(distance) = distance {
-            //println!("\t{name}\t{distance} refef_line: {refed_line}");
             match self.ancestor(distance).borrow().get(name) {
                 Some(value) => Ok(value),
                 None => unreachable!(),

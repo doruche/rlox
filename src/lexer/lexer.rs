@@ -48,15 +48,17 @@ impl Lexer {
                 ')' => Rparen,
                 '{' => LBrace,
                 '}' => RBrace,
-                '+' => Plus,
-                '-' => Minus,
+                '+' => if self.expect('=') { SelfAdd } else { Plus },
+                '-' => if self.expect('=') { SelfSub } else { Minus },
+                '*' => if self.expect('=') { SelfMul } else { Star },
                 ':' => Colon,
                 ';' => SemiColon,
                 ',' => Comma,
                 '.' => Dot,
-                '*' => Star,
                 '?' => Question,
                 '|' => Pipe,
+                '[' => LBlock,
+                ']' => RBlock,
                 ' '|'\r'|'\t' => return self.next_token(),
                 '\n' => {
                     self.line += 1;
@@ -75,6 +77,8 @@ impl Lexer {
                         self.advance();
                     }
                     return self.next_token();
+                } else if self.expect('=') {
+                    SelfDiv
                 } else {
                     Slash
                 },
@@ -219,6 +223,7 @@ impl Lexer {
             "for" => TokenType::For,
             "fun" => TokenType::Fun,
             "if" => TokenType::If,
+            "in" => TokenType::In,
             "nil" => TokenType::Nil,
             "or" => TokenType::Or,
             "print" => TokenType::Print,

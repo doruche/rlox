@@ -56,7 +56,11 @@ impl<'a> Resolver<'a>{
                 } => {
                     self.declare(name.to_string());
                     self.define(&name);
+                    self.enter_scope();
+                    self.declare("this".to_string());
+                    self.define("this");
                     self.resolve_stmt(methods)?;
+                    self.exit_scope();
                 }
                 Stmt::VarDecl { 
                     variable, 
@@ -83,6 +87,7 @@ impl<'a> Resolver<'a>{
                         self.declare(param.clone());
                         self.define(&param);
                     }
+
                     self.resolve_stmt(body)?;
 
                     self.exit_scope();
@@ -109,6 +114,7 @@ impl<'a> Resolver<'a>{
                     body, 
                     increment 
                 } => {
+                    let pre = self.in_loop;
                     self.in_loop = true;
                     self.enter_scope();
                     self.resolve_expr(condition)?;
@@ -118,8 +124,19 @@ impl<'a> Resolver<'a>{
                     }
 
                     self.exit_scope();
-                    self.in_loop = false;
-                }
+                    self.in_loop = pre;
+                },
+                Stmt::ForIn { var, array, body, .. } => {
+                    let pre = self.in_loop;
+                    self.in_loop = true;
+                    self.resolve_expr(array)?;
+                    self.enter_scope();
+                    self.declare(var.clone());
+                    self.define(var);
+                    self.resolve_stmt(body)?;
+                    self.exit_scope();
+                    self.in_loop = pre;
+                },
                 Stmt::Break(line)|Stmt::Continue(line) => {
                     if !self.in_loop {
                         return Err(Error::flow_stmt_error(*line));
@@ -163,6 +180,10 @@ impl<'a> Resolver<'a>{
                 self.resolve_expr(object)?;
                 self.resolve_expr(value)?;
             }
+            Expr::This {
+                refed_line,
+                resolve_distance,
+            } => self.resolve_local(expr, "this".to_string()),
             Expr::AssignExpr { 
                 name, 
                 refed_line, 
@@ -177,6 +198,32 @@ impl<'a> Resolver<'a>{
                     }
                 }
             }, 
+            Expr::Array { 
+                refed_line, 
+                elements 
+            } => {
+                for e in elements {
+                    self.resolve_expr(e)?;
+                }
+            },
+            Expr::Index { 
+                array, 
+                refed_line, 
+                index 
+            } => {
+                self.resolve_expr(array)?;
+                self.resolve_expr(index)?;
+            },
+            Expr::IndexSet { 
+                array, 
+                refed_line, 
+                index, 
+                value 
+            } => {
+                self.resolve_expr(array)?;
+                self.resolve_expr(index)?;
+                self.resolve_expr(value)?;
+            },
             Expr::Lambda { 
                 params, 
                 body, 
@@ -242,6 +289,8 @@ impl<'a> Resolver<'a>{
         for (distance, scope) in self.scopes.iter().rev().enumerate() {
             if scope.contains_key(&name) {
                 if let Expr::Variable { resolve_distance, .. } = expr {
+                    *resolve_distance = Some(distance);
+                } else if let Expr::This { resolve_distance, .. } = expr {
                     *resolve_distance = Some(distance);
                 }
                 return;

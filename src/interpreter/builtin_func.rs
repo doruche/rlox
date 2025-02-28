@@ -14,6 +14,8 @@ pub struct Sleep;
 pub struct ReadLine;
 #[derive(Debug)]
 pub struct ToNumber;
+#[derive(Debug)]
+pub struct Len;
 
 impl Callable for Clock {
     fn call(&self, arguments: Vec<crate::common::Value>, interpreter: &mut super::Interpreter, called_line: usize) -> Result<Value, Error> {
@@ -82,6 +84,7 @@ impl Callable for ToNumber {
             Value::Instance {..} => 1.,
             Value::Nil => 0.,
             Value::Number(n) => *n,
+            Value::Array(array) => array.borrow().len() as f64,
             Value::String(str) => {
                 if let Ok(number) = str.parse() {
                     number
@@ -99,5 +102,24 @@ impl Callable for ToNumber {
 
     fn to_string(&self) -> String {
         "<native to_number>".to_string()
+    }
+}
+
+impl Callable for Len {
+    fn call(&self, arguments: Vec<Value>, interpreter: &mut super::Interpreter, called_line: usize) -> Result<Value, Error> {
+        if let Some(Value::Array(array)) = arguments.first() {
+            Ok(Value::Number(array.borrow().len() as f64))
+        } else {
+            Err(Error::new(ErrorType::RuntimeError, 
+                "len() need an array as its argument.".to_string(), called_line))
+        }
+    }
+
+    fn arity(&self) -> u8 {
+        1
+    }
+
+    fn to_string(&self) -> String {
+        "<native len>".to_string()
     }
 }

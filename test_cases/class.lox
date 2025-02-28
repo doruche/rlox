@@ -5,4 +5,37 @@ class Maker {
 }
 var maker = Maker();
 maker.prop = 3;
+var maker_ref = maker;
+maker_ref.prop = 5;
 print maker.prop;
+
+class Bacon {
+    eat() {
+        print "Crunch crunch crunch!";
+    }
+}
+Bacon().eat();
+
+class Thing {
+    get_callback() {
+        fun local_func() {
+            print this;
+        }
+        return local_func;
+    }
+}
+
+var callback = Thing().get_callback();
+callback();
+
+class Cake {
+    taste() {
+        var adjective = "delicious";
+        print "The " + this.flavor + " cake is " + adjective + "!";
+        this.flavor = "bbb";
+    }
+}
+var cake = Cake();
+cake.flavor = "German chocklate";
+cake.taste();
+cake.taste();

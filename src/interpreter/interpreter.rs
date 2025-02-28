@@ -34,7 +34,21 @@ impl Interpreter {
                     methods 
                 } => {
                     self.environment.define(name.clone(), Value::Nil);
-                    let class = callable::Class::new(name.clone(), *defined_line);
+                    let methods = methods.iter()
+                        .map(|method| {
+                            if let Stmt::FunDecl {
+                                name, 
+                                defined_line, 
+                                params, 
+                                body 
+                            } = method {
+                                callable::Function::new(Some(name.clone()), *defined_line, params.clone(), body.clone(),
+                                 Context::new(FlowContext::Block, Some(self.environment.capture_context())))
+                            } else {
+                                unreachable!();
+                            }
+                        }).collect();
+                    let class = callable::Class::new(name.clone(), *defined_line, methods);
                     self.environment.define(name.clone(), Value::Callable(Rc::new(class)));
                 },
                 Stmt::FunDecl {
@@ -104,6 +118,19 @@ impl Interpreter {
                     }
                     self.environment.exit_scope();
                 },
+                Stmt::ForIn { var, array, body, line } => {
+                    let array = match self.eval(&array)? {
+                        Value::Array(a) => a,
+                        _ => return Err(Error::new(ErrorType::RuntimeError, 
+                            "For in loops can only be used with array.".to_string(), *line)),
+                    };
+                    self.environment.enter_scope(FlowContext::Loop);
+                    for ele in array.borrow().iter() {
+                        self.environment.define(var.clone(), ele.clone());
+                        self.exec(body)?;
+                    }
+                    self.environment.exit_scope();
+                },
                 Stmt::If {
                     condition, 
                     then_branch, 
@@ -158,6 +185,10 @@ impl Interpreter {
     pub fn eval(&mut self, expr: &Expr) -> Result<Value, Error> {
         match expr {
             Expr::Literal(value) => Ok(value.clone()),
+            Expr::This {
+                refed_line, 
+                resolve_distance 
+            } => self.environment.lookup_at("this", *resolve_distance, *refed_line),
             Expr::Get { 
                 object, 
                 called_line, 
@@ -167,9 +198,11 @@ impl Interpreter {
                 if let Value::Instance {
                     class,
                     fields,
-                } = object {
+                } = &object {
                     if fields.borrow().contains_key(name) {
                         Ok(fields.borrow().get(name).unwrap().clone())
+                    } else if let Some(method) = class.find_method(name, object.clone()) {
+                        Ok(Value::Callable(method))
                     } else {
                         Err(Error::new(ErrorType::RuntimeError, 
                             format!("Undefined property '{name}'."), *called_line))
@@ -223,6 +256,67 @@ impl Interpreter {
                     _ => Err(Error::invalid_call_error(*called_line)),
                 }
             },
+            Expr::Array { 
+                refed_line, 
+                elements 
+            } => {
+                let mut array = vec![];
+                for e in elements {
+                    array.push(self.eval(e)?);
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(array))))
+            },
+            Expr::Index {
+                array,
+                refed_line,
+                index,
+            } => {
+                let array = match self.eval(array)? {
+                    Value::Array(a) => a,
+                    _ => return Err(Error::new(ErrorType::SemanticError, 
+                        "Can only use index expression with array".to_string(), *refed_line)),
+                };
+                let index = match self.eval(index)? {
+                    Value::Number(n) => {
+                        if n.ceil() < 0.0 {
+                            return Err(Error::new(ErrorType::RuntimeError, 
+                                "Indexes must be positive.".to_string(), *refed_line));
+                        } else if n.floor() as usize >= array.borrow().len() {
+                            return Err(Error::new(ErrorType::RuntimeError, 
+                                "Indexes must be in range of array's length.".to_string(), *refed_line));
+                        }
+                        n
+                    },
+                    _ => return Err(Error::new(ErrorType::RuntimeError, 
+                        "Indexes must be integers.".to_string(), *refed_line)),
+                };
+                let v = array.borrow().get(index as usize).unwrap().clone();
+                Ok(v)
+            },
+            Expr::IndexSet { array, refed_line, index, value } => {
+                let mut array = match self.eval(array)? {
+                    Value::Array(a) => a,
+                    _ => return Err(Error::new(ErrorType::SemanticError, 
+                        "Can only use index expression with array".to_string(), *refed_line)),
+                };
+                let index = match self.eval(index)? {
+                    Value::Number(n) => {
+                        if n.ceil() < 0.0 {
+                            return Err(Error::new(ErrorType::RuntimeError, 
+                                "Indexes must be positive.".to_string(), *refed_line));
+                        } else if n.floor() as usize >= array.borrow().len() {
+                            return Err(Error::new(ErrorType::RuntimeError, 
+                                "Indexes must be in range of array's length.".to_string(), *refed_line));
+                        }
+                        n
+                    },
+                    _ => return Err(Error::new(ErrorType::RuntimeError, 
+                        "Indexes must be integers.".to_string(), *refed_line)),
+                };
+                let value = self.eval(&value)?;
+                array.borrow_mut()[index as usize] = value.clone();
+                Ok(value)
+            },
             Expr::Lambda { 
                 params, 
                 body, 
@@ -230,7 +324,7 @@ impl Interpreter {
             } => {
                 Ok(Value::Callable(Rc::new(callable::Function::new(
                     None, *defined_line, params.clone(), body.clone(), self.environment.capture_context()))))
-            }
+            },
             Expr::UnaryExpr {
                 op, 
                 expr: uexpr,

@@ -8,7 +8,7 @@ fun fib_rec(n) {
 
 print "fib_rec";
 var begin = clock();
-for (var i = 1; i < 30; i = i + 1) {
+for (var i = 1; i < 40; i = i + 1) {
     print fib_rec(i);
 }
 var after = clock();

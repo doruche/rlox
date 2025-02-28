@@ -1,0 +1,52 @@
+var numbers = [3,2,7,6,8];
+print numbers;
+
+fun insert_sort(nums) {
+    for (var i = 1; i < len(nums); i = i + 1) {
+        var key = nums[i];
+        var j = i - 1;
+        while j >= 0 and nums[j] > key {
+            nums[j+1] = nums[j];
+            j = j - 1;
+        }
+        nums[j + 1] = key;
+    }
+}
+insert_sort(numbers);
+print numbers;
+
+var numbers = [893,1243,122,493,745,2002,172,1888,557,1064,206,854,408,2046,470,354,1170,1174,1427,1165];
+fun swap(nums, i, j) {
+    var t = nums[i];
+    nums[i] = nums[j];
+    nums[j] = t;
+}
+fun partition(nums, left, right) {
+    var i = left;
+    var j = right;
+    while i < j {
+        while i < j and nums[j] >= nums[left] {
+            j = j - 1;
+        }
+        while i < j and nums[i] <= nums[left] {
+            i = i + 1;
+        }
+        var t = nums[i];
+        swap(numbers, i, j);
+    }
+    swap(numbers, i, left);
+    return i;
+}
+
+fun quick_sort(nums, left, right) {
+    if left >= right {
+        return;
+    }
+    var pivot = partition(numbers, left, right);
+    print pivot;
+    quick_sort(numbers, left, pivot - 1);
+    quick_sort(numbers, pivot + 1, right);
+}
+
+quick_sort(numbers, 0, len(numbers) - 1);
+print numbers;

@@ -1,5 +1,7 @@
 #![allow(unused)]
 
+use std::any::Any;
+
 use crate::{common::*, error};
 use crate::error::{Error, ErrorType};
 use crate::lexer::TokenType;
@@ -25,6 +27,17 @@ pub enum Expr {
         called_line: usize,
         name: String, 
     },
+    Index {
+        array: Box<Expr>,
+        refed_line: usize,
+        index: Box<Expr>,
+    },
+    IndexSet {
+        array: Box<Expr>,
+        refed_line: usize,
+        index: Box<Expr>,
+        value: Box<Expr>,
+    },
     Set {
         object: Box<Expr>,
         called_line: usize,
@@ -35,6 +48,10 @@ pub enum Expr {
         params: Vec<String>,
         body: Vec<Stmt>,
         defined_line: usize,
+    },
+    Array {
+        refed_line: usize,
+        elements: Vec<Expr>,
     },
     UnaryExpr {
         op: UnaryOp,
@@ -52,6 +69,10 @@ pub enum Expr {
         true_branch: Box<Expr>,
         false_branch: Box<Expr>,
         line: usize,
+    },
+    This {
+        refed_line: usize,
+        resolve_distance: Option<usize>,
     },
     GroupExpr(Box<Expr>),
     AssignExpr {
@@ -132,6 +153,12 @@ impl Parser {
                     name, 
                     value,
                 })
+            } else if let Index {
+                array,
+                refed_line,
+                index,
+            } = expr {
+                return Ok(IndexSet { array, refed_line, index, value, })
             }
 
             return Err(Error::invalid_assign_error(equals.line))
@@ -150,7 +177,8 @@ impl Parser {
                 let param = param.lexeme.unwrap().stringfy();
                 params.push(param);
             
-                while self.peek().kind != TokenType::Pipe {
+                while !self.at_end() &&
+                self.peek().kind != TokenType::Pipe {
                     if params.len() >= 16 {
                         error::report(Error::new(ErrorType::ParserError, 
                             "Can't have more than 16 arguments.".to_string(), self.peek().line));
@@ -354,7 +382,7 @@ impl Parser {
     }
 
     fn call(&mut self) -> Result<Expr, Error> {
-        let mut cal = self.primary()?;
+        let mut cal = self.array()?;
 
         loop {
             match self.peek().kind {
@@ -371,6 +399,16 @@ impl Parser {
                         name: property.lexeme.unwrap().stringfy()
                     };
                 }
+                TokenType::LBlock => {
+                    let bracket = self.eat_current();
+                    let index = Box::new(self.expr()?);
+                    self.eat(&TokenType::RBlock, "Expect ']' at the end of index expressions.".to_string())?;
+                    cal = Index { 
+                        array: Box::new(cal), 
+                        refed_line: bracket.line, 
+                        index, 
+                    };
+                },
                 _ => break,
             }
         }
@@ -402,6 +440,25 @@ impl Parser {
         })
     }
 
+    fn array(&mut self) -> Result<Expr, Error> {
+        if self.peek().kind == TokenType::LBlock {
+            let bracket = self.eat_current();
+            let mut array = vec![];
+            if self.peek().kind != TokenType::RBlock {
+                let ele = self.single_expr()?;
+                array.push(ele);
+                while !self.at_end() &&
+                self.peek().kind != TokenType::RBlock {
+                    self.eat(&TokenType::Comma, "Expect ',' to split elements.".to_string())?;
+                    array.push(self.single_expr()?);
+                }
+            }
+            self.eat(&TokenType::RBlock, "Expect ']' to end an array.".to_string())?;
+            return Ok(Array { refed_line: bracket.line, elements: array });
+        }
+        self.primary()
+    }
+
     fn primary(&mut self) -> Result<Expr, Error> { 
         let token = self.eat_current();
         match token.kind {
@@ -410,6 +467,10 @@ impl Parser {
             TokenType::True => Ok(Literal(Value::Boolean(true))),
             TokenType::Number => Ok(Literal(token.lexeme.unwrap())),
             TokenType::String => Ok(Literal(token.lexeme.unwrap())),
+            TokenType::This => Ok(This {
+                refed_line: token.line,
+                resolve_distance: None,
+            }),
             TokenType::Identifier => Ok(Variable {
                 name: match token.lexeme.unwrap() {
                     Value::String(s) => s,

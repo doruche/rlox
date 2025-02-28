@@ -3,12 +3,13 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::mem;
 use std::rc::Rc;
 
 use crate::common::Value;
 use crate::error::Error;
 use crate::parser::Stmt;
-use super::environment::Context;
+use super::environment::{Context, Environment};
 use super::{FlowContext, FlowSignal};
 use super::Interpreter;
 
@@ -21,7 +22,7 @@ pub trait Callable : Debug {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Function {
     name: Option<String>,
     defined_line: usize,
@@ -34,6 +35,8 @@ pub struct Function {
 pub(crate) struct Class {
     pub(crate) name: String,
     pub(crate) defined_line: usize,
+    methods: HashMap<String, Function>,
+
 }
 
 
@@ -100,10 +103,24 @@ impl Callable for Rc<Class> {
 }
 
 impl Class {
-    pub fn new(name: String, defined_line: usize) -> Rc<Self> {
+    pub fn new(name: String, defined_line: usize, methods: Vec<Function>) -> Rc<Self> {
         Rc::new(Self {
             name,
             defined_line,
+            methods: methods.into_iter()
+                .map(|method| (method.name.clone().unwrap(), method))
+                .collect(),
         })
+    }
+
+    pub fn find_method(&self, name: &str, instance: Value) -> Option<Rc<Function>> {
+        if self.methods.contains_key(name) {
+            let mut method = self.methods.get(name).unwrap().clone();
+            let class_closure = method.closure.clone();
+            class_closure.borrow_mut().set("this".to_string(), instance);
+            Some(Rc::new(method))
+        } else {
+            None
+        }
     }
 }

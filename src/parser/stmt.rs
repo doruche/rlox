@@ -21,6 +21,12 @@ pub enum Stmt {
         body: Vec<Stmt>,
         increment: Option<Box<Expr>>,
     },
+    ForIn {
+        var: String,
+        array: Box<Expr>,
+        body: Vec<Stmt>,
+        line: usize,
+    },
     ClassDecl {
         name: String,
         defined_line: usize,
@@ -72,7 +78,13 @@ impl Parser {
         match self.peek().kind {
             TokenType::If => self.if_stmt(),
             TokenType::While => self.while_stmt(),
-            TokenType::For => self.for_stmt(),
+            TokenType::For => {
+                self.eat_current();
+                if self.peek().kind == TokenType::Identifier {
+                    return self.for_in_stmt();
+                }
+                self.for_stmt()
+            },
             TokenType::Return => self.return_stmt(),
             TokenType::Break => Ok(Stmt::Break(self.eat_current().line)),
             TokenType::Continue => Ok(Stmt::Continue(self.eat_current().line)),
@@ -89,8 +101,6 @@ impl Parser {
     }
 
     fn for_stmt(&mut self) -> Result<Stmt, Error> {
-        self.eat_current();
-
         self.eat(&TokenType::LParen, "Expect '(' after 'for'.".to_string())?;
         let initializer = match self.peek().kind {
             TokenType::SemiColon => self.empty(),
@@ -148,6 +158,16 @@ impl Parser {
             body,
             increment: None,
         })
+    }
+
+    fn for_in_stmt(&mut self) -> Result<Stmt, Error> {
+        let var = self.eat_current();
+        self.eat(&TokenType::In, "Expect \"in\".".to_string())?;
+        let array = Box::new(self.expr()?);
+
+        let body = self.block()?;
+
+        Ok(ForIn { var: var.lexeme.unwrap().stringfy(), array, body, line:var.line })
     }
 
     fn if_stmt(&mut self) -> Result<Stmt, Error> {
@@ -210,7 +230,7 @@ impl Parser {
     }
 
     pub(crate) fn block(&mut self) -> Result<Vec<Stmt>, Error> {
-        self.eat(&TokenType::LBrace, "Need a '}' to begin a block".to_string())?;
+        self.eat(&TokenType::LBrace, "Need a '{' to begin a block".to_string())?;
 
         let mut statements = vec![];
         while self.peek().kind != TokenType::RBrace

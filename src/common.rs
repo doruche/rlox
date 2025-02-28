@@ -10,6 +10,7 @@ pub enum Value {
     Number(f64),
     Boolean(bool),
     String(String),
+    Array(Rc<RefCell<Vec<Value>>>),
     Callable(Rc<dyn Callable>),
     Instance {
         class: Rc<Class>,
@@ -17,6 +18,7 @@ pub enum Value {
     },
 }
 
+// for repl
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -24,6 +26,18 @@ impl std::fmt::Display for Value {
             Number(n) => write!(f, "{n}"),
             Boolean(b) => write!(f, "{b}"),
             Value::String(s) => write!(f, "\"{s}\""),
+            Value::Array(array) => {
+                write!(f, "[")?;
+                if array.borrow().len() == 0 {
+                   return write!(f, "]");
+                } else {
+                    write!(f, "{}", array.borrow().get(0).unwrap())?;
+                    for e in array.borrow().iter().skip(1) {
+                        write!(f, ", {}", e)?;
+                    }
+                    write!(f, "]")
+                }
+            },
             Value::Callable(c) => write!(f, "{}", c.to_string()),
             Value::Instance {
                 class,
@@ -52,6 +66,7 @@ impl Value {
             Boolean(b) => b.to_string(),
             Nil => "nil".to_string(),
             Number(n) => n.to_string(),
+            array @Value::Array(..) => format!("{}", array),
             Value::Callable(c) => c.to_string(),
             Value::Instance { class, .. } => format!("{} instance", class.name.clone())
         }
@@ -90,7 +105,11 @@ impl Value {
         match (self, other) {
             (Number(a), Number(b)) => Ok(Number(a + b)),
             (Value::String(a), Value::String(b)) => Ok(Value::String(a.clone() + b)),
-            (Value::String(a), b) => Ok(Value::String(a + &b.stringfy())),
+            (Value::String(a), b) => Ok(Value::String(a + &b.stringfy())), 
+            (Value::Array(array), b) => {
+                array.borrow_mut().push(b.clone());
+                Ok(Value::Array(array))
+            },
             (a, Value::String(b)) => Ok(Value::String(b.clone() + &a.stringfy())),
             _ => Err(()),
         }
